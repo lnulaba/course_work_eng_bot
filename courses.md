@@ -48,8 +48,8 @@
 --------------- --------------------------------
 
 --------------- Table: users -------------------
-| id | user_id | username | first_name | last_name | registration_date | user_progress_id |
-| 1 | 12345 | johndoe | John | Doe | 2024-09-15 | 1 |
+| id | user_id | username | first_name | last_name | registration_date | user_progress_id | tg_id | tg_premium | tg_lang |
+| 1 | 12345 | johndoe | John | Doe | 2024-09-15 | 1 | 123456789 | True | en |
 ...
 --------------- --------------------------------
 
