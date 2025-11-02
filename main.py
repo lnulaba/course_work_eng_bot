@@ -5,9 +5,6 @@ from aiogram.filters import Command
 
 from db import *
 
-
-
-
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token="7365678598:AAHAMFBVPRR5etj4Fdt3TTLnmWJSDNbrWFQ")
 dp = Dispatcher()
@@ -85,6 +82,13 @@ async def cmd_start(message: types.Message):
 async def start_testing(message: types.Message):
     await message.answer("Ви обрали 'Почати тестування'.")
     # Додайте логіку для початку тестування тут
+    # get_random_words
+    random_words = await db.get_random_words(total_count=35) # кратно 7 (рівням)
+    print(len(random_words))
+    for index, word in enumerate(random_words, 1):
+        print(f"{index}. {word.word} - {word.translation} - {word.level_english}")
+
+    # await message.answer(f"Here are some random words for testing: {random_words}")
 
 # A0, A1, A2, B1, B2, C1, C2
 @dp.message(lambda message: message.text in ["A0", "A1", "A2", "B1", "B2", "C1", "C2"])
@@ -117,7 +121,7 @@ connection = Connection()
 async def setup_database():
     await connection.connect()
     global db
-    db = DB(connection.connection)
+    db = DB(connection.session_maker)
 
 # Ensure the database is set up before starting the bot
 async def main():
