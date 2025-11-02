@@ -1,0 +1,328 @@
+@startuml flowchart_4_progress_tracking
+!theme plain
+skinparam backgroundColor White
+skinparam activity {
+    BackgroundColor LightSalmon
+    BorderColor DarkRed
+    FontColor Black
+    FontSize 11
+}
+skinparam decision {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+skinparam activityStart {
+    Color Green
+}
+skinparam activityEnd {
+    Color Red
+}
+
+title **Блок-схема 4: Алгоритм відстеження прогресу**
+
+start
+
+:📊 Користувач обирає "Моя статистика";
+
+:👤 Отримати ID користувача;
+note right: user_id з телеграм сесії
+
+:📈 **ЗАВАНТАЖЕННЯ ОСНОВНОЇ СТАТИСТИКИ**;
+
+:📋 Отримати поточний прогрес;
+note right
+    SELECT up.*, u.username, u.created_at
+    FROM user_progress up
+    JOIN users u ON up.user_id = u.user_id  
+    WHERE up.user_id = ?
+end note
+
+:🎯 Отримати налаштування;
+note right
+    SELECT daily_goal, preferred_language
+    FROM settings 
+    WHERE user_id = ?
+end note
+
+:📚 **РОЗРАХУНОК ДЕТАЛЬНОЇ СТАТИСТИКИ**;
+
+:🔢 Підрахувати загальні сесії;
+note right
+    SELECT 
+        COUNT(*) as total_sessions,
+        COUNT(CASE WHEN is_completed = TRUE THEN 1 END) as completed_sessions,
+        AVG(CASE WHEN is_completed = TRUE THEN 
+            (correct_answers/questions_answered)*100 END) as avg_accuracy
+    FROM test_sessions 
+    WHERE user_id = ?
+end note
+
+:📊 Статистика по типах сесій;
+note right
+    SELECT 
+        session_type,
+        COUNT(*) as count,
+        AVG((correct_answers/questions_answered)*100) as avg_accuracy,
+        SUM(questions_answered) as total_questions,
+        SUM(correct_answers) as total_correct
+    FROM test_sessions 
+    WHERE user_id = ? AND is_completed = TRUE
+    GROUP BY session_type
+end note
+
+:📅 Активність за останні 7 днів;
+note right
+    SELECT 
+        DATE(started_at) as session_date,
+        COUNT(*) as sessions_count,
+        SUM(questions_answered) as questions_count,
+        AVG((correct_answers/questions_answered)*100) as daily_accuracy
+    FROM test_sessions 
+    WHERE user_id = ? 
+        AND started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        AND is_completed = TRUE
+    GROUP BY DATE(started_at)
+    ORDER BY session_date DESC
+end note
+
+:🏆 **АНАЛІЗ ДОСЯГНЕНЬ**;
+
+:🎯 Перевірка щоденної цілі;
+note right
+    today_questions = SELECT SUM(questions_answered)
+    FROM test_sessions 
+    WHERE user_id = ? 
+        AND DATE(started_at) = CURDATE()
+        AND is_completed = TRUE
+        
+    goal_progress = (today_questions / daily_goal) * 100
+end note
+
+:📈 Прогрес за місяць;
+note right
+    SELECT 
+        WEEK(started_at) as week_num,
+        COUNT(*) as weekly_sessions,
+        AVG((correct_answers/questions_answered)*100) as weekly_accuracy,
+        SUM(questions_answered) as weekly_questions
+    FROM test_sessions 
+    WHERE user_id = ? 
+        AND started_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        AND is_completed = TRUE
+    GROUP BY WEEK(started_at)
+    ORDER BY week_num DESC
+end note
+
+:🏅 Визначення досягнень;
+note right
+    achievements = []
+    
+    // Перевірка різних досягнень
+    if total_sessions >= 10: achievements.add("Активний учень")
+    if avg_accuracy >= 90: achievements.add("Експерт")
+    if streak_days >= 7: achievements.add("Тижневий воїн")
+    if total_questions >= 1000: achievements.add("Тисяча питань")
+    
+    // Досягнення за рівнем
+    if level_english >= "B2": achievements.add("Просунутий рівень")
+end note
+
+:📊 **ФОРМУВАННЯ ЗВІТУ**;
+
+:📱 Створити основний звіт;
+note right
+    main_report = f"""
+    📊 **ТВОЯ СТАТИСТИКА**
+    
+    👤 Користувач: {username}
+    🎯 Поточний рівень: {level_english}
+    📅 З нами з: {created_at.strftime('%d.%m.%Y')}
+    
+    📈 **ЗАГАЛЬНІ ПОКАЗНИКИ:**
+    ✅ Правильних відповідей: {correct_answers}/{total_questions_answered}
+    📊 Загальна точність: {accuracy:.1f}%
+    🎯 Пройдено сесій: {completed_sessions}/{total_sessions}
+    
+    📅 **СЬОГОДНІ:**
+    📚 Питань відповіли: {today_questions}
+    🎯 Прогрес до цілі: {goal_progress:.0f}% ({today_questions}/{daily_goal})
+    """
+end note
+
+:📈 Додати деталі по типах;
+note right
+    for session_type, stats in session_type_stats:
+        report += f"""
+        
+        📚 **{session_type.upper()}:**
+        • Сесій: {stats.count}
+        • Точність: {stats.avg_accuracy:.1f}%
+        • Питань: {stats.total_questions}
+        """
+end note
+
+:📅 Додати активність за тиждень;
+note right
+    report += f"""
+    
+    📅 **АКТИВНІСТЬ ЗА 7 ДНІВ:**
+    """
+    
+    for day_stat in weekly_activity:
+        report += f"""
+        📆 {day_stat.date}: {day_stat.sessions_count} сесій, 
+           {day_stat.questions_count} питань ({day_stat.accuracy:.0f}%)
+        """
+end note
+
+if (🏆 Є досягнення?) then (✅ ТАК)
+    :🏅 Додати досягнення до звіту;
+    note right
+        report += f"""
+        
+        🏆 **ТВОЇ ДОСЯГНЕННЯ:**
+        """
+        
+        for achievement in achievements:
+            report += f"🏅 {achievement}\n"
+    end note
+endif
+
+:📊 **АНАЛІЗ ТЕНДЕНЦІЙ**;
+
+:📈 Порівняння з минулим тижнем;
+note right
+    last_week_stats = SELECT AVG(accuracy) 
+    FROM weekly_stats 
+    WHERE week_start = DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    
+    current_week_stats = SELECT AVG(accuracy)
+    FROM weekly_stats 
+    WHERE week_start = CURDATE()
+    
+    trend = current_week_stats - last_week_stats
+end note
+
+if (📈 Позитивна тенденція?) then (trend > 0)
+    :📈 "Твої результати покращуються!";
+    :💪 Мотиваційне повідомлення;
+    note right
+        "🎉 Відмінно! Твоя точність зросла на {trend:.1f}%!
+        Продовжуй в тому ж дусі! 💪"
+    end note
+    
+elseif (📉 Негативна тенденція?) then (trend < -5)
+    :📉 "Потрібно більше практики";
+    :💡 Рекомендації для покращення;
+    note right
+        "📚 Рекомендую:
+        • Повторити складні теми
+        • Пройти додаткові тести
+        • Вивчити нові слова
+        
+        💪 Не здавайся! Все вийде!"
+    end note
+    
+else (📊 Стабільні результати)
+    :⚖️ "Стабільні результати";
+    :🎯 Пропозиція нових викликів;
+    note right
+        "🎯 Стабільні результати - це добре!
+        Можливо, час для нового виклику?
+        
+        • Спробувати складніші тести
+        • Перейти на новий рівень
+        • Вивчити нову тему"
+    end note
+endif
+
+:🎯 **РЕКОМЕНДАЦІЇ**;
+
+:🔮 Аналіз слабких місць;
+note right
+    weak_topics = SELECT t.topic_name, AVG(accuracy) as avg_score
+    FROM test_sessions ts
+    JOIN questions q ON ts.session_id = q.session_id  
+    JOIN topics t ON q.topic_id = t.topic_id
+    WHERE ts.user_id = ? AND ts.is_completed = TRUE
+    GROUP BY t.topic_id
+    HAVING avg_score < 70
+    ORDER BY avg_score ASC
+    LIMIT 3
+end note
+
+if (📚 Є слабкі теми?) then (✅ ТАК)
+    :💡 Рекомендації для покращення;
+    note right
+        recommendations += f"""
+        
+        💡 **РЕКОМЕНДАЦІЇ:**
+        
+        📚 Варто повторити:
+        """
+        
+        for topic in weak_topics:
+            recommendations += f"• {topic.name} (точність: {topic.avg_score:.0f}%)\n"
+            
+        recommendations += """
+        
+        🎯 Пройди додаткові тести з цих тем
+        📖 Вивчи нові слова за цими темами
+        """
+    end note
+endif
+
+:🎮 Перевірка готовності до підвищення;
+note right
+    if accuracy >= 80 AND total_questions_answered >= 100:
+        next_level = get_next_level(current_level)
+        level_up_ready = True
+    else:
+        level_up_ready = False
+end note
+
+if (⬆️ Готовий до підвищення?) then (✅ ТАК)
+    :🎓 Запропонувати тест на підвищення;
+    note right
+        "🎓 **ВІТАЮ!**
+        
+        Твої результати показують, що ти готовий
+        до переходу на рівень {next_level}!
+        
+        🎯 Точність: {accuracy:.1f}% (потрібно ≥80%)
+        📚 Питань пройдено: {total_questions_answered} (потрібно ≥100)
+        
+        Хочеш пройти тест на підвищення рівня?"
+    end note
+    
+    if (🎯 Пройти тест?) then (✅ ТАК)
+        :🚀 Запустити тест на підвищення;
+        note right: Перехід до алгоритму тестування вищого рівня
+    endif
+endif
+
+:📱 **ВІДОБРАЖЕННЯ РЕЗУЛЬТАТІВ**;
+
+:📊 Показати повний звіт;
+note right
+    Відправити користувачу:
+    • Основний звіт
+    • Деталі по типах активності  
+    • Досягнення
+    • Тенденції
+    • Рекомендації
+    • Можливості підвищення
+end note
+
+:💾 Оновити час останнього перегляду;
+note right
+    UPDATE user_progress 
+    SET last_stats_viewed = NOW() 
+    WHERE user_id = ?
+end note
+
+:🏠 Повернутися до головного меню;
+
+stop
+
+@enduml

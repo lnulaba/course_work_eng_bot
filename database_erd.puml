@@ -1,0 +1,162 @@
+@startuml database_erd
+!theme plain
+skinparam backgroundColor White
+skinparam entity {
+    BackgroundColor LightBlue
+    BorderColor Navy
+    FontColor Black
+}
+skinparam relationship {
+    LineColor DarkBlue
+    LineThickness 2
+}
+
+title **Entity Relationship Diagram - English Learning Bot Database**
+
+' Сутності (таблиці)
+entity "users" as users {
+    * id : INT <<PK>>
+    --
+    * user_id : BIGINT <<UK>>
+    username : VARCHAR(50)
+    * first_name : VARCHAR(100)
+    last_name : VARCHAR(100)
+    registration_date : TIMESTAMP
+    is_active : BOOLEAN
+}
+
+entity "user_progress" as progress {
+    * id : INT <<PK>>
+    --
+    * user_id : BIGINT <<FK>>
+    * level_english : ENUM
+    total_questions_answered : INT
+    correct_answers : INT
+    accuracy : DECIMAL(5,2)
+    words_learned : INT
+    study_streak_days : INT
+    last_updated : TIMESTAMP
+}
+
+entity "settings" as settings {
+    * id : INT <<PK>>
+    --
+    * user_id : BIGINT <<FK>>
+    preferred_language : ENUM
+    notification_time : TIME
+    daily_goal : INT
+    notifications_enabled : BOOLEAN
+    sound_enabled : BOOLEAN
+    difficulty_preference : ENUM
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+}
+
+entity "topics" as topics {
+    * id : INT <<PK>>
+    --
+    * topic : VARCHAR(100) <<UK>>
+    description : TEXT
+    parent_topic_id : INT <<FK>>
+    icon : VARCHAR(50)
+    difficulty_level : ENUM
+    is_active : BOOLEAN
+    sort_order : INT
+    created_at : TIMESTAMP
+}
+
+entity "words" as words {
+    * id : INT <<PK>>
+    --
+    * word : VARCHAR(100)
+    * translation : VARCHAR(200)
+    phonetic : VARCHAR(100)
+    * level_english : ENUM
+    part_of_speech : ENUM
+    frequency_rank : INT
+    check_admin : BOOLEAN
+    file_audio : VARCHAR(255)
+    example_sentence : TEXT
+    created_at : TIMESTAMP
+    updated_at : TIMESTAMP
+}
+
+entity "questions" as questions {
+    * id : INT <<PK>>
+    --
+    * question : TEXT
+    * option_a : VARCHAR(500)
+    * option_b : VARCHAR(500) 
+    * option_c : VARCHAR(500)
+    * option_d : VARCHAR(500)
+    * correct_answer : ENUM
+    explanation : TEXT
+    * topic_id : INT <<FK>>
+    * level_english : ENUM
+    difficulty_score : DECIMAL(2,1)
+    check_admin : BOOLEAN
+    usage_count : INT
+    success_rate : DECIMAL(5,2)
+    created_by : ENUM
+    created_at : TIMESTAMP
+}
+
+entity "test_sessions" as sessions {
+    * id : INT <<PK>>
+    --
+    * user_id : BIGINT <<FK>>
+    * session_type : ENUM
+    topic_id : INT <<FK>>
+    session_name : VARCHAR(200)
+    questions_answered : INT
+    correct_answers : INT
+    session_accuracy : DECIMAL(5,2)
+    session_duration : INT
+    average_response_time : DECIMAL(6,2)
+    started_at : TIMESTAMP
+    completed_at : TIMESTAMP
+    is_completed : BOOLEAN
+    session_notes : TEXT
+}
+
+' Зв'язки між таблицями
+
+' 1:1 зв'язки
+users ||--|| progress : "має один\nпрогрес"
+users ||--|| settings : "має одні\nналаштування"
+
+' 1:N зв'язки  
+users ||--o{ sessions : "має багато\nсесій"
+topics ||--o{ questions : "містить\nбагато питань"
+
+' N:1 зв'язки
+sessions }o--|| topics : "належить\nдо теми"
+
+' Самореференція
+topics ||--o{ topics : "батьківська\nтема"
+
+' Додаткові зв'язки для повноти картини
+note top of users : "Основна таблиця\nкористувачів Telegram"
+note right of progress : "Відстеження прогресу\nнавчання (1:1 з users)"
+note right of settings : "Персональні налаштування\n(1:1 з users)"
+note top of topics : "Ієрархічна структура тем\n(самореференція)"
+note left of words : "Словник англійських слів\nз аудіо та прикладами"
+note bottom of questions : "Банк тестових питань\n(N:1 з topics)"
+note bottom of sessions : "Історія тестових сесій\n(зв'язки з users, topics)"
+
+' Легенда
+legend bottom right
+    **Типи зв'язків:**
+    ||--|| : Один до одного (1:1)
+    ||--o{ : Один до багатьох (1:N)  
+    }o--|| : Багато до одного (N:1)
+    ||--o{ : Самореференція
+    
+    **Позначення полів:**
+    * Обов'язкове поле
+    <<PK>> Primary Key
+    <<FK>> Foreign Key  
+    <<UK>> Unique Key
+endlegend
+
+@enduml

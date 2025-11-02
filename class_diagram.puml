@@ -1,0 +1,70 @@
+@startuml class_diagram!theme plainskinparam backgroundColor Whiteskinparam class {    BackgroundColor LightCyan    BorderColor Navy    FontColor Black    ArrowColor Navy}skinparam interface {    BackgroundColor LightYellow    BorderColor Orange}skinparam note {    BackgroundColor LightGreen    BorderColor DarkGreen}title **Діаграма класів English Learning Bot**' === ОСНОВНІ КЛАСИ ===class "📊 User" {    - user_id: int <<PK>>    - telegram_id: bigint <<UNIQUE>>    - username: varchar(50)    - full_name: varchar(100)    - created_at: timestamp    - is_active: boolean    --    + register(): boolean    + authenticate(): boolean    + updateProfile(): void    + deactivate(): void}class "📈 UserProgress" {    - progress_id: int <<PK>>    - user_id: int <<FK>>    - level_english: enum    - total_questions_answered: int    - correct_answers: int    - accuracy: decimal(5,2)    - last_updated: timestamp    --    + updateProgress(): void    + calculateAccuracy(): decimal    + checkLevelUp(): boolean    + getStatistics(): object}class "⚙️ Settings" {    - setting_id: int <<PK>>    - user_id: int <<FK>>    - preferred_language: enum    - daily_goal: int    - notification_time: time    - sound_enabled: boolean    --    + updateSettings(): void    + getNotificationTime(): time    + setDailyGoal(): void    + toggleSound(): void}class "📚 Topic" {    - topic_id: int <<PK>>    - topic_name: varchar(100)    - description: text    - difficulty_level: enum    - is_active: boolean    --    + getTopics(): array    + getByLevel(): array    + activate(): void    + deactivate(): void}class "📖 Word" {    - word_id: int <<PK>>    - word: varchar(100)    - translation: varchar(200)    - level_english: enum    - file_audio: varchar(255)    - check_admin: boolean    - created_at: timestamp    --    + getWordsByLevel(): array    + playAudio(): void    + markAsLearned(): void    + getRandomWords(): array}class "❓ Question" {    - question_id: int <<PK>>    - topic_id: int <<FK>>    - question_text: text    - option_a: varchar(255)    - option_b: varchar(255)    - option_c: varchar(255)    - option_d: varchar(255)    - correct_answer: char(1)    - difficulty_level: enum    - ai_generated: boolean    --    + generateQuestion(): Question    + checkAnswer(): boolean    + getByTopic(): array    + getByDifficulty(): array}class "🎯 TestSession" {    - session_id: int <<PK>>    - user_id: int <<FK>>    - session_type: enum    - questions_answered: int    - correct_answers: int    - started_at: timestamp    - completed_at: timestamp    - is_completed: boolean    --    + startSession(): TestSession    + addAnswer(): void    + completeSession(): void    + calculateResults(): object}' === ІНТЕРФЕЙСИ ===interface "🤖 BotInterface" {    + sendMessage(text: string): void    + sendKeyboard(keyboard: array): void    + playAudio(file: string): void    + showResults(data: object): void}interface "🧠 AIInterface" {    + generateQuestions(topic: string, level: string): array    + explainMistake(question: string, answer: string): string    + getRecommendations(user: User): array}interface "🗄️ DatabaseInterface" {    + connect(): connection    + query(sql: string): result    + insert(table: string, data: object): int    + update(table: string, data: object): boolean    + delete(table: string, id: int): boolean}' === КОНТРОЛЕРИ ===class "🎮 TelegramBotController" {    - bot_token: string    - api_url: string    --    + handleStart(): void    + handleWordLearning(): void    + handleTestGeneration(): void    + handleSettings(): void    + handleStatistics(): void}class "🧮 LearningController" {    --    + processWordLearning(user: User): void    + generateTest(topic: Topic, user: User): TestSession    + evaluateAnswer(answer: string, question: Question): boolean    + updateUserProgress(user: User, session: TestSession): void}class "📊 StatisticsController" {    --    + getUserStatistics(user: User): object    + calculateAccuracy(user: User): decimal    + generateReport(user: User): string    + checkAchievements(user: User): array}class "🤖 ChatGPTController" {    - api_key: string    - model: string    --    + generateQuestions(prompt: string): array    + explainGrammar(topic: string): string    + createExercise(level: string): object}' === ЗОВНІШНІ СЕРВІСИ ===class "📱 TelegramAPI" {    - token: string    --    + sendMessage(): void    + getUpdates(): array    + setWebhook(): boolean}class "🧠 OpenAI_API" {    - api_key: string    --    + createCompletion(): object    + generateText(): string    + analyzeText(): object}class "🗄️ MySQL_Database" {    - host: string    - database: string    --    + connect(): connection    + executeQuery(): result
+    + transaction(): void
+}
+
+' === ЗВ'ЯЗКИ ===
+
+' Один до одного (1:1)
+User ||--|| Settings : "has"
+note on link: Кожен користувач має\nодні налаштування
+
+User ||--|| UserProgress : "tracks"
+note on link: Кожен користувач має\nодин запис прогресу
+
+' Один до багатьох (1:N)
+User ||--o{ TestSession : "participates"
+note on link: Користувач може мати\nбагато сесій тестування
+
+Topic ||--o{ Question : "contains"
+note on link: Тема містить\nбагато питань
+
+' Багато до одного (N:1)
+TestSession }o--|| User : "belongs to"
+Question }o--|| Topic : "categorized by"
+
+' Багато до багатьох через проміжну таблицю
+User }o--o{ Word : "learns"
+note on link: Користувачі вивчають слова\n(через таблицю user_word_progress)
+
+' Самозв'язок
+Topic ||--o{ Topic : "parent/child"
+note on link: Теми можуть мати\nпідтеми (self-reference)
+
+' Агрегація
+TelegramBotController o-- BotInterface
+LearningController o-- AIInterface
+StatisticsController o-- DatabaseInterface
+
+' Композиція
+TelegramBotController *-- LearningController
+TelegramBotController *-- StatisticsController
+TelegramBotController *-- ChatGPTController
+
+' Реалізація інтерфейсів
+TelegramAPI ..|> BotInterface
+OpenAI_API ..|> AIInterface
+MySQL_Database ..|> DatabaseInterface
+
+' Залежності
+LearningController ..> User : "uses"
+LearningController ..> Word : "uses"
+LearningController ..> Question : "uses"
+LearningController ..> TestSession : "creates"
+
+StatisticsController ..> UserProgress : "analyzes"
+StatisticsController ..> TestSession : "aggregates"
+
+ChatGPTController ..> Question : "generates"
+ChatGPTController ..> Topic : "uses"
+
+' === ПРИМІТКИ ===
+
+note top of User : **Головна сутність**\nЗбериграє дані користувача\nз Telegram
+
+note right of UserProgress : **Відстеження прогресу**\nАвтоматично оновлюється\nпісля кожної сесії
+
+note left of Question : **AI генерація**\nПитання можуть бути\nстворені ChatGPT
+
+note bottom of TestSession : **Сесії навчання**\nЗберігають результати\nкожного тестування
+
+@enduml

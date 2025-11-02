@@ -1,0 +1,324 @@
+@startuml flowchart_2_chatgpt_test_generation
+!theme plain
+skinparam backgroundColor White
+skinparam activity {
+    BackgroundColor LightCyan
+    BorderColor DarkCyan
+    FontColor Black
+    FontSize 11
+}
+skinparam decision {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+skinparam activityStart {
+    Color Green
+}
+skinparam activityEnd {
+    Color Red
+}
+
+title **Блок-схема 2: Алгоритм генерації тестів через ChatGPT**
+
+start
+
+:🧠 Користувач обирає "Генерація тестів";
+
+:👤 Отримати дані користувача;
+note right
+    SELECT level_english 
+    FROM user_progress 
+    WHERE user_id = ?
+end note
+
+:🎯 Показати доступні теми;
+note right
+    SELECT topic_id, topic_name, description
+    FROM topics 
+    WHERE difficulty_level <= ? 
+    AND is_active = TRUE
+    ORDER BY topic_name
+end note
+
+if (📋 Теми знайдені?) then (✅ ТАК)
+    :📱 Відобразити список тем;
+    note right
+        "Обери тему для тесту:
+        
+        📝 Граматика:
+        • Present Simple
+        • Past Simple  
+        • Present Perfect
+        • Modal Verbs
+        
+        📚 Лексика:
+        • Daily Routine
+        • Food & Drink
+        • Travel & Tourism
+        • Business English
+        
+        📖 Читання:
+        • Short Stories
+        • News Articles
+        • Instructions"
+    end note
+    
+    :👆 Чекати вибір користувача;
+    
+    :🎯 Отримати обрану тему;
+    note right
+        topic_id = user_choice
+        SELECT topic_name, difficulty_level
+        FROM topics WHERE topic_id = ?
+    end note
+    
+    :🤖 **ПІДГОТОВКА ЗАПИТУ ДО ChatGPT**;
+    
+    :📝 Формування промпту;
+    note right
+        prompt = f"""
+        Generate exactly 20 English test questions about {topic_name} 
+        for {level_english} level students.
+        
+        Requirements:
+        - Multiple choice format (A, B, C, D)
+        - Questions in English
+        - Appropriate difficulty for {level_english} level
+        - Include grammar, vocabulary, and comprehension
+        - Return as JSON array
+        
+        JSON format:
+        [
+          {
+            "question": "She ___ to work every day.",
+            "options": {
+              "A": "go",
+              "B": "goes", 
+              "C": "going",
+              "D": "gone"
+            },
+            "correct_answer": "B",
+            "explanation": "Present Simple 3rd person singular"
+          }
+        ]
+        """
+    end note
+    
+    :🌐 **ВИКЛИК ChatGPT API**;
+    note right
+        POST https://api.openai.com/v1/chat/completions
+        {
+          "model": "gpt-3.5-turbo",
+          "messages": [
+            {"role": "system", "content": "You are an English teacher creating tests"},
+            {"role": "user", "content": prompt}
+          ],
+          "temperature": 0.7,
+          "max_tokens": 3000
+        }
+    end note
+    
+    if (🔗 API доступний?) then (✅ ТАК)
+        if (📋 Відповідь отримано?) then (✅ ТАК)
+            :📄 Парсинг JSON відповіді;
+            
+            if (✅ JSON валідний?) then (✅ ТАК)
+                if (🔢 20 питань отримано?) then (✅ ТАК)
+                    :💾 **ЗБЕРЕЖЕННЯ ПИТАНЬ В БД**;
+                    
+                    :🆔 Створити сесію тестування;
+                    note right
+                        INSERT INTO test_sessions
+                        (user_id, session_type, started_at)
+                        VALUES (?, 'ai_generated_test', NOW())
+                        
+                        session_id = LAST_INSERT_ID()
+                    end note
+                    
+                    repeat
+                        :💾 Зберегти питання;
+                        note right
+                            INSERT INTO questions
+                            (topic_id, question_text, option_a, option_b, 
+                            option_c, option_d, correct_answer, 
+                            difficulty_level, ai_generated, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, NOW())
+                        end note
+                    repeat while (❓ Ще є питання?)
+                    
+                    :🎯 **ПОЧАТОК ТЕСТУВАННЯ**;
+                    
+                    :🔢 Ініціалізувати змінні;
+                    note right
+                        current_question = 1
+                        correct_answers = 0
+                        total_questions = 20
+                        start_time = NOW()
+                    end note
+                    
+                    repeat
+                        :❓ Показати поточне питання;
+                        note right
+                            "Питання {current_question}/20:
+                            
+                            {question_text}
+                            
+                            A) {option_a}
+                            B) {option_b}  
+                            C) {option_c}
+                            D) {option_d}
+                            
+                            ⏱️ Часу залишилось: {time_left}"
+                        end note
+                        
+                        :👆 Чекати відповідь користувача;
+                        
+                        :✅ Перевірити правильність;
+                        
+                        if (🎯 Відповідь правильна?) then (✅ ТАК)
+                            :➕ correct_answers++;
+                            :🎉 Показати підтвердження;
+                            note right
+                                "✅ Правильно! 
+                                
+                                💡 Пояснення: {explanation}"
+                            end note
+                            
+                        else (❌ НІ)
+                            :📝 Показати правильну відповідь;
+                            note right
+                                "❌ Неправильно
+                                
+                                ✅ Правильна відповідь: {correct_answer}
+                                💡 Пояснення: {explanation}"
+                            end note
+                            
+                            :🤖 Додаткове пояснення через GPT;
+                            note right
+                                explain_prompt = f"Explain why {correct_answer} 
+                                is correct for: {question_text}"
+                                
+                                GPT response -> detailed_explanation
+                            end note
+                            
+                            :💡 Показати розширене пояснення;
+                        endif
+                        
+                        :➕ current_question++;
+                        
+                    repeat while (current_question <= 20?)
+                    
+                    :🧮 **РОЗРАХУНОК РЕЗУЛЬТАТІВ**;
+                    
+                    :📊 Обчислити статистику;
+                    note right
+                        accuracy = (correct_answers / 20) * 100
+                        session_duration = NOW() - start_time
+                        completion_rate = 100  // всі питання пройдені
+                    end note
+                    
+                    :💾 Оновити сесію;
+                    note right
+                        UPDATE test_sessions SET
+                        questions_answered = 20,
+                        correct_answers = ?,
+                        completed_at = NOW(),
+                        is_completed = TRUE
+                        WHERE session_id = ?
+                    end note
+                    
+                    :📈 Оновити загальний прогрес;
+                    note right
+                        UPDATE user_progress SET
+                        total_questions_answered = total_questions_answered + 20,
+                        correct_answers = correct_answers + ?,
+                        accuracy = (correct_answers / total_questions_answered) * 100,
+                        last_updated = NOW()
+                        WHERE user_id = ?
+                    end note
+                    
+                    :🎊 **ПОКАЗАТИ РЕЗУЛЬТАТИ**;
+                    note right
+                        "🎯 Результати тесту '{topic_name}':
+                        
+                        📊 Правильних відповідей: {correct_answers}/20
+                        📈 Точність: {accuracy}%
+                        ⏱️ Час виконання: {session_duration} хв
+                        🎯 Рівень: {level_english}
+                        
+                        {performance_message}"
+                    end note
+                    
+                    if (🏆 Відмінний результат?) then (accuracy >= 85%)
+                        :🎉 Вітання з високим результатом;
+                        :⬆️ Перевірити можливість підвищення рівня;
+                        note right
+                            "🏆 Відмінно! Ти справжній експерт!
+                            
+                            🎓 Можливо, готовий до наступного рівня?
+                            Хочеш пройти тест на підвищення?"
+                        end note
+                        
+                        if (🎓 Тест на підвищення?) then (✅ ТАК)
+                            :🚀 Запустити тест вищого рівня;
+                            note right: Повторити процес з вищим рівнем складності
+                        endif
+                        
+                    elseif (📚 Потрібна практика?) then (accuracy < 60%)
+                        :💪 Рекомендації для покращення;
+                        :🔄 Запропонувати повторити тему;
+                        note right
+                            "📚 Рекомендую більше практики з цієї теми
+                            
+                            💡 Корисні ресурси:
+                            • Повторити слова з теми {topic_name}
+                            • Пройти додаткові вправи
+                            • Переглянути граматичні правила"
+                        end note
+                    endif
+                    
+                else (❌ Недостатньо питань)
+                    :🚨 "Помилка: отримано менше 20 питань";
+                    :🔄 "Спробуй ще раз";
+                endif
+                
+            else (❌ JSON невалідний)
+                :🚨 "Помилка парсингу відповіді GPT";
+                :🔄 "Спробуй ще раз";
+            endif
+            
+        else (❌ Пуста відповідь)
+            :🚨 "ChatGPT не відповів";
+            :🔄 "Спробуй пізніше";
+        endif
+        
+    else (❌ API недоступний)
+        :🌐 "Проблема з підключенням до ChatGPT";
+        :📋 Використати готові питання з БД;
+        note right
+            SELECT * FROM questions 
+            WHERE topic_id = ? 
+            AND difficulty_level = ?
+            AND ai_generated = FALSE
+            ORDER BY RANDOM() 
+            LIMIT 20
+        end note
+        
+        if (📋 Готові питання знайдені?) then (✅ ТАК)
+            note right: Продовжити тестування з готовими питаннями
+        else (❌ НІ)
+            :🚨 "Питання недоступні";
+            :🏠 Повернутися до меню;
+        endif
+    endif
+    
+else (❌ НІ)
+    :🚨 "Теми для вашого рівня не знайдені";
+    :🔧 "Зверніться до адміністратора";
+endif
+
+:🏠 Повернутися до головного меню;
+
+stop
+
+@enduml

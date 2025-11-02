@@ -1,0 +1,26 @@
+# English Learning Bot Dependencies
+# Основні залежності для Telegram бота
+
+# Telegram Bot API
+aiogram>=3.0.0
+
+# MySQL Database
+aiomysql>=0.1.1
+PyMySQL>=1.0.0
+
+# OpenAI ChatGPT API
+openai>=1.0.0
+
+# Додаткові утиліти
+python-dotenv>=1.0.0
+aiofiles>=23.0.0
+
+# Логування та моніторинг
+structlog>=23.0.0
+
+# Для роботи з JSON та датами
+python-dateutil>=2.8.0
+
+# HTTP клієнт для API запитів
+aiohttp>=3.8.0
+httpx>=0.24.0

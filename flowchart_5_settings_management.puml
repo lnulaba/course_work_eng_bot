@@ -1,0 +1,394 @@
+@startuml flowchart_5_settings_management
+!theme plain
+skinparam backgroundColor White
+skinparam activity {
+    BackgroundColor LightGoldenRodYellow
+    BorderColor DarkGoldenRod
+    FontColor Black
+    FontSize 11
+}
+skinparam decision {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+skinparam activityStart {
+    Color Green
+}
+skinparam activityEnd {
+    Color Red
+}
+
+title **Блок-схема 5: Алгоритм управління налаштуваннями**
+
+start
+
+:⚙️ Користувач обирає "Налаштування";
+
+:👤 Отримати ID користувача;
+note right: user_id з телеграм сесії
+
+:📋 **ЗАВАНТАЖЕННЯ ПОТОЧНИХ НАЛАШТУВАНЬ**;
+
+:🔍 Отримати налаштування з БД;
+note right
+    SELECT s.*, up.level_english
+    FROM settings s
+    JOIN user_progress up ON s.user_id = up.user_id
+    WHERE s.user_id = ?
+end note
+
+if (⚙️ Налаштування знайдені?) then (✅ ТАК)
+    :📱 Показати поточні налаштування;
+    note right
+        "⚙️ **ТВОЇ НАЛАШТУВАННЯ**
+        
+        🌐 Мова інтерфейсу: {preferred_language}
+        🎯 Щоденна ціль: {daily_goal} питань
+        ⏰ Час нагадування: {notification_time}
+        🔊 Звук: {sound_enabled ? 'Увімкнено' : 'Вимкнено'}
+        📊 Поточний рівень: {level_english}
+        
+        Що хочеш змінити?"
+    end note
+    
+    :🎛️ Показати меню налаштувань;
+    note right
+        "Оберіть що змінити:
+        
+        🌐 1. Мова інтерфейсу
+        🎯 2. Щоденна ціль  
+        ⏰ 3. Час нагадувань
+        🔊 4. Звукові ефекти
+        📊 5. Пройти тест на рівень
+        🔄 6. Скинути прогрес
+        🚪 7. Видалити акаунт
+        🏠 8. Повернутися в меню"
+    end note
+    
+else (❌ НІ - помилка)
+    :🚨 Помилка завантаження налаштувань;
+    :🔧 Створити налаштування за замовчуванням;
+    note right
+        INSERT INTO settings 
+        (user_id, preferred_language, daily_goal, 
+        notification_time, sound_enabled)
+        VALUES (?, 'UA', 50, '19:00:00', TRUE)
+    end note
+endif
+
+:👆 Чекати вибір користувача;
+
+switch (Вибір користувача?)
+
+case (🌐 МОВА ІНТЕРФЕЙСУ)
+    :🗣️ **ЗМІНА МОВИ**;
+    
+    :📋 Показати доступні мови;
+    note right
+        "🌐 Оберіть мову інтерфейсу:
+        
+        🇺🇦 1. Українська (UA)
+        🇬🇧 2. English (EN)  
+        🇷🇺 3. Русский (RU)
+        🇵🇱 4. Polski (PL)
+        
+        Поточна мова: {current_language}"
+    end note
+    
+    :👆 Отримати вибір мови;
+    
+    if (✅ Валідна мова?) then (✅ ТАК)
+        :💾 Оновити мову в БД;
+        note right
+            UPDATE settings 
+            SET preferred_language = ? 
+            WHERE user_id = ?
+        end note
+        
+        :🔄 Перезавантажити інтерфейс;
+        :✅ "Мову змінено успішно!";
+        
+    else (❌ НІ)
+        :🚨 "Невірний вибір мови";
+    endif
+
+case (🎯 ЩОДЕННА ЦІЛЬ)
+    :🎯 **ЗМІНА ЩОДЕННОЇ ЦІЛІ**;
+    
+    :📊 Показати поточну ціль;
+    note right
+        "🎯 Поточна щоденна ціль: {daily_goal} питань
+        
+        Прогрес сьогодні: {today_progress}/{daily_goal}
+        
+        Введіть нову ціль (10-500 питань):"
+    end note
+    
+    :🔢 Отримати нове значення;
+    
+    if (✅ Валідне число?) then (10 <= goal <= 500)
+        :📊 Показати прогноз;
+        note right
+            estimated_time = goal * 0.5  // 30 сек на питання
+            
+            "📊 Нова ціль: {goal} питань
+            ⏱️ Приблизний час: {estimated_time} хвилин
+            
+            Підтвердити зміну?"
+        end note
+        
+        if (✅ Підтвердити?) then (✅ ТАК)
+            :💾 Оновити ціль;
+            note right
+                UPDATE settings 
+                SET daily_goal = ? 
+                WHERE user_id = ?
+            end note
+            
+            :✅ "Щоденну ціль оновлено!";
+            
+        else (❌ НІ)
+            :🔄 "Зміни скасовано";
+        endif
+        
+    else (❌ Невалідне)
+        :🚨 "Ціль має бути від 10 до 500 питань";
+    endif
+
+case (⏰ ЧАС НАГАДУВАНЬ)
+    :⏰ **НАЛАШТУВАННЯ НАГАДУВАНЬ**;
+    
+    :📅 Показати поточний час;
+    note right
+        "⏰ Поточний час нагадування: {notification_time}
+        
+        Нагадування допомагають не забувати про навчання!
+        
+        Введіть новий час (формат: ГГ:ХХ)
+        Приклад: 19:30
+        
+        Або введіть 'вимкнути' для відключення"
+    end note
+    
+    :🕐 Отримати новий час;
+    
+    if (🕐 Валідний формат?) then (✅ ТАК)
+        if (⏰ Час в межах 00:00-23:59?) then (✅ ТАК)
+            :💾 Оновити час нагадування;
+            note right
+                UPDATE settings 
+                SET notification_time = ? 
+                WHERE user_id = ?
+            end note
+            
+            :📱 Налаштувати системне нагадування;
+            note right
+                schedule_daily_reminder(user_id, notification_time)
+            end note
+            
+            :✅ "Час нагадування оновлено!";
+            
+        else (❌ Неправильний час)
+            :🚨 "Час має бути в форматі ГГ:ХХ (00:00-23:59)";
+        endif
+        
+    elseif (🔇 Вимкнути?) then (input == "вимкнути")
+        :💾 Відключити нагадування;
+        note right
+            UPDATE settings 
+            SET notification_time = NULL 
+            WHERE user_id = ?
+        end note
+        
+        :🔕 Скасувати системні нагадування;
+        :✅ "Нагадування вимкнено";
+        
+    else (❌ Невалідний формат)
+        :🚨 "Неправильний формат часу";
+    endif
+
+case (🔊 ЗВУКОВІ ЕФЕКТИ)
+    :🔊 **НАЛАШТУВАННЯ ЗВУКУ**;
+    
+    :🎵 Показати поточний стан;
+    note right
+        "🔊 Звукові ефекти: {sound_enabled ? 'Увімкнено' : 'Вимкнено'}
+        
+        Звукові ефекти включають:
+        • Аудіо вимова слів
+        • Звуки правильних/неправильних відповідей
+        • Сигнали досягнень
+        
+        Змінити налаштування?"
+    end note
+    
+    if (🔄 Змінити звук?) then (✅ ТАК)
+        :🔄 Переключити стан звуку;
+        note right
+            new_sound_state = NOT current_sound_state
+            
+            UPDATE settings 
+            SET sound_enabled = ? 
+            WHERE user_id = ?
+        end note
+        
+        if (🔊 Звук увімкнено?) then (✅ ТАК)
+            :🎵 Відтворити тестовий звук;
+            :✅ "Звук увімкнено!";
+        else (🔇 Звук вимкнено)
+            :🔇 "Звук вимкнено";
+        endif
+    endif
+
+case (📊 ТЕСТ НА РІВЕНЬ)
+    :📊 **ПОВТОРНЕ ВИЗНАЧЕННЯ РІВНЯ**;
+    
+    :ℹ️ Показати інформацію;
+    note right
+        "📊 Поточний рівень: {level_english}
+        
+        🎯 Тест допоможе точно визначити твій рівень
+        
+        ⚠️ УВАГА: Результат може змінити твій поточний рівень!
+        
+        Тест включає:
+        • 40 слів різної складності
+        • 20 граматичних питань  
+        • 10 питань на розуміння тексту
+        
+        Продовжити?"
+    end note
+    
+    if (✅ Пройти тест?) then (✅ ТАК)
+        :🎯 Запустити тест визначення рівня;
+        note right: Перехід до алгоритму початкового тесту
+        
+        :📊 Отримати результат тесту;
+        :💾 Оновити рівень в БД;
+        note right
+            UPDATE user_progress 
+            SET level_english = ?, 
+                last_updated = NOW() 
+            WHERE user_id = ?
+        end note
+        
+        :🎊 Показати новий рівень;
+        
+    else (❌ НІ)
+        :🔄 "Тест скасовано";
+    endif
+
+case (🔄 СКИНУТИ ПРОГРЕС)
+    :🔄 **СКИДАННЯ ПРОГРЕСУ**;
+    
+    :⚠️ Показати попередження;
+    note right
+        "⚠️ **УВАГА!**
+        
+        Ця дія видалить:
+        • Весь твій прогрес навчання
+        • Статистику тестів
+        • Історію відповідей
+        
+        Налаштування збережуться
+        
+        ❌ ЦЯ ДІЯ НЕЗВОРОТНА! ❌
+        
+        Для підтвердження введи: СКИНУТИ"
+    end note
+    
+    :🔤 Отримати підтвердження;
+    
+    if (✅ Правильне підтвердження?) then (input == "СКИНУТИ")
+        :🗑️ Видалити дані прогресу;
+        note right
+            // Видалити всі сесії тестування
+            DELETE FROM test_sessions WHERE user_id = ?
+            
+            // Скинути прогрес
+            UPDATE user_progress SET
+                level_english = 'A0',
+                total_questions_answered = 0,
+                correct_answers = 0,
+                accuracy = 0.00,
+                last_updated = NOW()
+            WHERE user_id = ?
+        end note
+        
+        :✅ "Прогрес скинуто. Починай спочатку!";
+        
+    else (❌ Неправильне підтвердження)
+        :🔄 "Скидання скасовано";
+    endif
+
+case (🚪 ВИДАЛИТИ АКАУНТ)
+    :🚪 **ВИДАЛЕННЯ АКАУНТУ**;
+    
+    :⚠️ Критичне попередження;
+    note right
+        "⚠️ **КРИТИЧНО!**
+        
+        Ця дія ПОВНІСТЮ видалить:
+        • Твій акаунт
+        • Весь прогрес
+        • Всі налаштування
+        • Історію активності
+        
+        ❌ ВІДНОВЛЕННЯ НЕМОЖЛИВЕ! ❌
+        
+        Для підтвердження введи повне речення:
+        'Я хочу видалити мій акаунт назавжди'"
+    end note
+    
+    :🔤 Отримати підтвердження;
+    
+    if (✅ Точне підтвердження?) then (input == "Я хочу видалити мій акаунт назавжди")
+        :🗑️ Повне видалення даних;
+        note right
+            // Видалити в правильному порядку через FK
+            DELETE FROM test_sessions WHERE user_id = ?
+            DELETE FROM user_progress WHERE user_id = ?  
+            DELETE FROM settings WHERE user_id = ?
+            DELETE FROM users WHERE user_id = ?
+        end note
+        
+        :👋 "Акаунт видалено. До побачення!";
+        :🛑 Завершити сесію;
+        stop
+        
+    else (❌ Неправильне підтвердження)
+        :😅 "На щастя, видалення скасовано";
+    endif
+
+case (🏠 ПОВЕРНУТИСЯ)
+    :🏠 Повернутися до головного меню;
+
+endswitch
+
+:🔄 **ЗАВЕРШЕННЯ НАЛАШТУВАНЬ**;
+
+:💾 Перевірити збереження змін;
+note right
+    // Перевірити що всі зміни збережено
+    SELECT * FROM settings WHERE user_id = ?
+end note
+
+:📱 Показати підсумок змін;
+note right
+    "✅ Налаштування оновлено!
+    
+    🔄 Зміни вступили в силу
+    
+    Хочеш змінити ще щось?"
+end note
+
+if (🔄 Інші зміни?) then (✅ ТАК)
+    note right: Повернутися до меню налаштувань
+    :🔄 Повторити процес;
+else (❌ НІ)
+    :🏠 Повернутися до головного меню;
+endif
+
+stop
+
+@enduml
