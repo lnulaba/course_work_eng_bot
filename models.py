@@ -1,5 +1,6 @@
-from sqlalchemy import BigInteger, Boolean, Column, Integer, String, TIMESTAMP, func
+from sqlalchemy import BigInteger, Boolean, Column, Integer, String, TIMESTAMP, Float, ForeignKey, func
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
@@ -16,8 +17,23 @@ class User(Base):
     tg_id = Column(BigInteger)
     tg_premium = Column(Boolean)
     tg_lang = Column(String(10))
+    
+    # Relationship - використовуємо user_id для зв'язку
+    progress = relationship("UserProgress", back_populates="user", foreign_keys="UserProgress.user_id", uselist=False)
 
-
+class UserProgress(Base):
+    __tablename__ = 'user_progress'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey('users.user_id'), nullable=False)
+    level_english = Column(String(2), nullable=False)
+    total_questions_answered = Column(Integer, default=0)
+    correct_answers = Column(Integer, default=0)
+    accuracy = Column(Float, default=0.0)
+    last_updated = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+    
+    # Relationship - використовуємо user_id для зв'язку
+    user = relationship("User", back_populates="progress", foreign_keys=[user_id])
 
 class Words(Base):
     __tablename__ = 'words'
@@ -29,3 +45,28 @@ class Words(Base):
     file_audio = Column(String(255))
     check_admin = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+class Topics(Base):
+    __tablename__ = 'topics'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic = Column(String(100), nullable=False, unique=True)
+    description = Column(String(500))
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+class Questions(Base):
+    __tablename__ = 'questions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question = Column(String(500), nullable=False)
+    wrong_answers = Column(String(1000), nullable=False)  # JSON array as string
+    answer = Column(String(200), nullable=False)
+    explanation = Column(String(1000))  # Пояснення правильної відповіді
+    topic = Column(String(100), ForeignKey('topics.topic'), nullable=False)
+    level_english = Column(String(2), nullable=False)
+    check_admin = Column(Boolean, default=False)
+    level_question = Column(Float, default=2.5)  # Складність питання 1-5
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    
+    # Relationship
+    topic_rel = relationship("Topics", backref="questions")

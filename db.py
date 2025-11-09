@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import func, select
-from models import Base, User, Words
+from models import Base, User, Words, UserProgress, Questions, Topics
 
 class Connection:    
     def __init__(self):
@@ -92,5 +92,108 @@ class DB:
                 random_words.extend(level_words)
             
             return random_words
+        
+    async def get_user_progress(self, user_id):
+        """Отримати прогрес користувача"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(UserProgress).where(UserProgress.user_id == user_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def update_user_progress(self, user_id, level_english, total_questions, correct_answers):
+        """Оновити або створити прогрес користувача"""
+        async with self.session_maker() as session:
+            # Спробувати знайти існуючий прогрес
+            result = await session.execute(
+                select(UserProgress).where(UserProgress.user_id == user_id)
+            )
+            progress = result.scalar_one_or_none()
+            
+            accuracy = (correct_answers / total_questions * 100) if total_questions > 0 else 0.0
+            
+            if progress:
+                # Оновити існуючий запис
+                progress.level_english = level_english
+                progress.total_questions_answered += total_questions
+                progress.correct_answers += correct_answers
+                progress.accuracy = (progress.correct_answers / progress.total_questions_answered * 100)
+            else:
+                # Створити новий запис
+                progress = UserProgress(
+                    user_id=user_id,
+                    level_english=level_english,
+                    total_questions_answered=total_questions,
+                    correct_answers=correct_answers,
+                    accuracy=accuracy
+                )
+                session.add(progress)
+            
+            await session.commit()
+            await session.refresh(progress)
+            
+            # Оновити user_progress_id у таблиці users
+            user_result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if user and user.user_progress_id != progress.id:
+                user.user_progress_id = progress.id
+                await session.commit()
+            
+            return progress
+        
+    async def add_topic(self, topic, description=None):
+        """Додати тему"""
+        async with self.session_maker() as session:
+            # Перевірка чи тема вже існує
+            result = await session.execute(select(Topics).where(Topics.topic == topic))
+            existing_topic = result.scalar_one_or_none()
+            
+            if not existing_topic:
+                new_topic = Topics(topic=topic, description=description)
+                session.add(new_topic)
+                await session.commit()
+                return new_topic
+            return existing_topic
+    
+    async def add_question(self, question, wrong_answers, answer, topic, level_english, level_question=2.5, explanation=None):
+        """Додати питання"""
+        async with self.session_maker() as session:
+            import json
+            
+            # Перетворити список неправильних відповідей в JSON string
+            if isinstance(wrong_answers, list):
+                wrong_answers_str = json.dumps(wrong_answers, ensure_ascii=False)
+            else:
+                wrong_answers_str = wrong_answers
+            
+            new_question = Questions(
+                question=question,
+                wrong_answers=wrong_answers_str,
+                answer=answer,
+                explanation=explanation,
+                topic=topic,
+                level_english=level_english,
+                level_question=level_question,
+                check_admin=False
+            )
+            session.add(new_question)
+            await session.commit()
+            return new_question
+    
+    async def get_random_questions(self, level=None, topic=None, count=20):
+        """Отримати випадкові питання"""
+        async with self.session_maker() as session:
+            query = select(Questions).where(Questions.check_admin == True)
+            
+            if level:
+                query = query.where(Questions.level_english == level)
+            if topic:
+                query = query.where(Questions.topic == topic)
+            
+            query = query.order_by(func.rand()).limit(count)
+            result = await session.execute(query)
+            return result.scalars().all()
 
 

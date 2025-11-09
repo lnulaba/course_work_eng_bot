@@ -21,8 +21,8 @@
         6. С2 - 12000-16000 (вільне володіння, словниковий запас, подібний до освіченого носія).
 
 ---------------Table: questions-----------------
-| id | question | wrong_answer | answer | topic | level_english | check admin | level_question(1-5) |
-| 1 | What is the past tense of "go"? | ["goed", "went", "gone", "goes"] | "went" | Tenses | A1 | False | 2.5 |
+| id | question | wrong_answer | answer | explanation | topic | level_english | check admin | level_question(1-5) |
+| 1 | What is the past tense of "go"? | ["goed", "went", "gone", "goes"] | "went" | "Go" є неправильним дієсловом, його минулий час - "went" | Tenses | A1 | False | 2.5 |
 ...
 --------------- --------------------------------
 
