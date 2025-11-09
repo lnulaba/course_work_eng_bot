@@ -3,28 +3,30 @@ from aiogram import types, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardRemove
-from g4f.client import AsyncClient
 
-from keyboards.reply import kb_start
+from keyboards.reply import kb_with_level  # Замість kb_start
 from keyboards.inline import get_word_answer_keyboard
+from utils import ask_ai_async
 
 router = Router()
 
 # FSM States
 class TestingStates(StatesGroup):
     testing = State()
+# Пройти заново тестування / Почати тестування
+@router.message(F.text.in_({"Почати тестування", "Пройти заново тестування"}))
+async def start_or_restart_testing(message: types.Message, state: FSMContext, db):
+    """Початок/повторне проходження тестування (однакова логіка)"""
+    await state.clear()
 
-@router.message(lambda message: message.text == "Почати тестування")
-async def start_testing(message: types.Message, state: FSMContext, db):
-    """Початок тестування"""
     await message.answer(
-        "Ви обрали 'Почати тестування'.\n"
+        "Ви обрали тестування.\n"
         "Оцініть ваше знання кожного слова.",
         reply_markup=ReplyKeyboardRemove()
     )
     
     # Отримати випадкові слова
-    random_words = await db.get_random_words(total_count=14) # Наприклад, 35 слів кратно 7
+    random_words = await db.get_random_words(total_count=14)
     
     # Зберегти слова, результати та user_id в FSM
     await state.update_data(
@@ -104,10 +106,10 @@ async def process_answer(callback: types.CallbackQuery, state: FSMContext, db):
     await show_next_word(callback.message, state, db)
 
 async def finish_testing(message: types.Message, state: FSMContext, db):
+    """Завершити тестування та визначити рівень"""
     # info logging
     logging.info(f"User level determination started.")
 
-    """Завершити тестування та визначити рівень"""
     data = await state.get_data()
     results = data.get('results', [])
     user_id = data.get('user_id')
@@ -139,6 +141,10 @@ async def finish_testing(message: types.Message, state: FSMContext, db):
     except Exception as e:
         logging.error(f"Error saving user progress: {e}")
     
+    # Отримати відповідну клавіатуру
+    from handlers.basic import get_appropriate_keyboard
+    keyboard = await get_appropriate_keyboard(db, user_id)
+    
     await message.answer(
         f"🎉 <b>Результати тестування:</b>\n\n"
         f"📊 Статистика:\n"
@@ -148,7 +154,7 @@ async def finish_testing(message: types.Message, state: FSMContext, db):
         f"🎓 <b>Ваш рівень англійської: {level}</b>\n\n"
         f"💾 Результати збережено у вашому профілі!",
         parse_mode="HTML",
-        reply_markup=kb_start
+        reply_markup=keyboard
     )
     
     # Очистити стан
@@ -157,8 +163,6 @@ async def finish_testing(message: types.Message, state: FSMContext, db):
 async def determine_english_level(results: list) -> str:
     """Визначити рівень англійської через ChatGPT"""
     try:
-        client = AsyncClient()
-        
         # Підготувати дані для аналізу
         analysis_data = []
         for result in results:
@@ -182,12 +186,7 @@ async def determine_english_level(results: list) -> str:
 ВАЖЛИВО: У відповіді напиши ТІЛЬКИ один рівень з цього списку: A0, A1, A2, B1, B2, C1, C2
 Нічого більше не пиши, тільки рівень."""
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        
-        level = response.choices[0].message.content.strip()
+        level = await ask_ai_async(prompt)
         print(f"Determined level from GPT: {level}")
         
         # Валідація рівня

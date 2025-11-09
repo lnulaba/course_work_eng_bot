@@ -195,5 +195,71 @@ class DB:
             query = query.order_by(func.rand()).limit(count)
             result = await session.execute(query)
             return result.scalars().all()
+        
+    async def get_questions_statistics(self):
+        """Отримати статистику питань по рівнях та темах"""
+        async with self.session_maker() as session:
+            # Загальна кількість питань
+            total_result = await session.execute(
+                select(func.count(Questions.id))
+            )
+            total_questions = total_result.scalar()
+            
+            # Кількість питань по рівнях
+            level_result = await session.execute(
+                select(Questions.level_english, func.count(Questions.id))
+                .group_by(Questions.level_english)
+                .order_by(Questions.level_english)
+            )
+            questions_by_level = {level: count for level, count in level_result.all()}
+            
+            # Кількість питань по темах
+            topic_result = await session.execute(
+                select(Questions.topic, func.count(Questions.id))
+                .group_by(Questions.topic)
+                .order_by(func.count(Questions.id).desc())
+            )
+            questions_by_topic = {topic: count for topic, count in topic_result.all()}
+            
+            # Кількість питань по рівнях та темах
+            level_topic_result = await session.execute(
+                select(Questions.level_english, Questions.topic, func.count(Questions.id))
+                .group_by(Questions.level_english, Questions.topic)
+                .order_by(Questions.level_english, Questions.topic)
+            )
+            questions_by_level_topic = {}
+            for level, topic, count in level_topic_result.all():
+                if level not in questions_by_level_topic:
+                    questions_by_level_topic[level] = {}
+                questions_by_level_topic[level][topic] = count
+            
+            return {
+                "total": total_questions,
+                "by_level": questions_by_level,
+                "by_topic": questions_by_topic,
+                "by_level_topic": questions_by_level_topic
+            }
+    
+    async def get_words_statistics(self):
+        """Отримати статистику слів по рівнях"""
+        async with self.session_maker() as session:
+            # Загальна кількість слів
+            total_result = await session.execute(
+                select(func.count(Words.word_id))
+            )
+            total_words = total_result.scalar()
+            
+            # Кількість слів по рівнях
+            level_result = await session.execute(
+                select(Words.level_english, func.count(Words.word_id))
+                .group_by(Words.level_english)
+                .order_by(Words.level_english)
+            )
+            words_by_level = {level: count for level, count in level_result.all()}
+            
+            return {
+                "total": total_words,
+                "by_level": words_by_level
+            }
 
 

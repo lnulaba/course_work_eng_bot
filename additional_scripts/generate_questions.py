@@ -7,8 +7,9 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from g4f.client import Client
 from db import Connection, DB
+from utils import ask_ai_sync
+import random
 
 # Конфігурація генерації
 TOPICS_CONFIG = {
@@ -36,8 +37,6 @@ TOPICS_CONFIG = {
 
 def generate_question_with_gpt(topic: str, level: str) -> dict:
     """Згенерувати одне питання через GPT"""
-    client = Client()
-    
     prompt = f"""Generate 1 English grammar question for level {level} on the topic "{topic}".
 
 Requirements:
@@ -61,13 +60,7 @@ IMPORTANT: The explanation MUST be in Ukrainian language!
 Do not include any explanations, markdown, or extra text. Just the JSON."""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            web_search=False
-        )
-        
-        content = response.choices[0].message.content.strip()
+        content = ask_ai_sync(prompt, model="gpt-4o")  # Видалено web_search
         
         # Видалити markdown блоки якщо є
         if content.startswith("```"):
@@ -76,7 +69,6 @@ Do not include any explanations, markdown, or extra text. Just the JSON."""
             content = content.replace("```json", "").replace("```", "").strip()
         
         # Знайти JSON об'єкт у тексті
-        # Шукаємо від першої { до останньої }
         start_idx = content.find('{')
         end_idx = content.rfind('}')
         
@@ -177,7 +169,9 @@ async def main():
     total_success = 0
     total_failed = 0
     
-    for topic, config in TOPICS_CONFIG.items():
+    topics_items = list(TOPICS_CONFIG.items())
+    random.shuffle(topics_items)
+    for topic, config in topics_items:
         print(f"\n{'='*60}")
         print(f"Topic: {topic}")
         print(f"{'='*60}")
@@ -197,6 +191,8 @@ async def main():
     print(f"Total failures: {total_failed}")
     print(f"Success rate: {total_success/(total_success+total_failed)*100:.1f}%")
     print("="*60)
+    # Закрити підключення до БД
+    await connection.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
