@@ -8,7 +8,6 @@ api_keys = {
     "my": "6bd60986ac8544d08311d5f0a1736393",
     "github1": "f0af93f61ad44ceeb26a4aca6be8e75c",
     "github3": "74b0c0abd2294719ba29967c27bde367",
-    "github4": "a7caa007814440618e14d45e42bd5450",
     "github5": "0710951b319a4cd79e155a8e40413658",
     "github7": "09c8c09c82764e73a906a8f353115bec",
     "github8": "8df72ab4814643ca897ee213f4d2b054",
@@ -18,7 +17,8 @@ api_keys = {
     "github12": "8b10e507d0ae4eeb9c591d3da3273e22",
     "github14": "417c93a52af34fe985efe1c9bfbb5a06",
     "github15": "31b33472c40d42e0a90aa12f31c5f17c",
-    "github16": "a84731691b2042dcaf203671ac44126e"
+    "github16": "a84731691b2042dcaf203671ac44126e",
+    "github4": "a7caa007814440618e14d45e42bd5450",
 }
 
 AIMLAPI_BASE_URL = "https://api.aimlapi.com/v1"
