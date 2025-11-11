@@ -196,34 +196,6 @@ class DB:
             result = await session.execute(query)
             return result.scalars().all()
         
-    async def get_questions_sequence(self):
-        """Отримати по одному перевіреному питанню для кожної комбінації рівня і теми"""
-        async with self.session_maker() as session:
-            result = await session.execute(
-                select(Questions)
-                .where(Questions.check_admin == True)
-                .order_by(Questions.level_english, Questions.topic, func.rand())
-            )
-            candidates = result.scalars().all()
-            unique = {}
-            for question in candidates:
-                key = (question.level_english, question.topic)
-                if key not in unique:
-                    unique[key] = question
-            ordered_levels = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]
-            ordered_questions = []
-            added_keys = set()
-            for level in ordered_levels:
-                topics = sorted(topic for lvl, topic in unique.keys() if lvl == level)
-                for topic in topics:
-                    key = (level, topic)
-                    ordered_questions.append(unique[key])
-                    added_keys.add(key)
-            for key, question in sorted(unique.items()):
-                if key not in added_keys:
-                    ordered_questions.append(question)
-            return ordered_questions
-    
     async def get_questions_statistics(self):
         """Отримати статистику питань по рівнях та темах"""
         async with self.session_maker() as session:
