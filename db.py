@@ -709,5 +709,37 @@ class DB:
                     progress.total_questions_answered += 1
                     progress.accuracy = (progress.correct_answers / progress.total_questions_answered * 100)
                     await session.commit()
+    
+    async def reset_user_progress(self, user_id: int):
+        """Повністю скинути прогрес користувача"""
+        async with self.session_maker() as session:
+            # Видалити прогрес по словах
+            await session.execute(
+                select(UserWordProgress).where(UserWordProgress.user_id == user_id)
+            )
+            word_progress_result = await session.execute(
+                select(UserWordProgress).where(UserWordProgress.user_id == user_id)
+            )
+            for wp in word_progress_result.scalars().all():
+                await session.delete(wp)
+            
+            # Видалити загальний прогрес
+            progress_result = await session.execute(
+                select(UserProgress).where(UserProgress.user_id == user_id)
+            )
+            progress = progress_result.scalar_one_or_none()
+            if progress:
+                await session.delete(progress)
+            
+            # Скинути user_progress_id в таблиці users
+            user_result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if user:
+                user.user_progress_id = None
+            
+            await session.commit()
+            return True
 
 

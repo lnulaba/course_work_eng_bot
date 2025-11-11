@@ -1,4 +1,4 @@
-from aiogram import types, Router
+from aiogram import types, Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -7,8 +7,10 @@ from keyboards.reply import (
     kb_unregistered, 
     kb_no_level, 
     kb_with_level, 
-    kb_select_level
+    kb_select_level,
+    kb_settings
 )
+from keyboards.inline import get_reset_confirmation_keyboard
 
 router = Router()
 
@@ -107,7 +109,7 @@ async def process_level_selection(message: types.Message, state: FSMContext, db)
         
         await message.answer(
             f"✅ Ваш рівень встановлено на <b>{selected_level}</b>!\n\n"
-            f"Ви можете пройти тестування для підтвердження рівня.",
+            f"Тепер ви можете вивчати слова та проходити питання цього рівня.",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
@@ -237,3 +239,128 @@ async def show_statistics(message: types.Message, db):
         message_text += f"  {topic}: {count} питань\n"
     
     await message.answer(message_text, parse_mode="HTML")
+
+@router.message(lambda message: message.text == "⚙️ Налаштування")
+async def show_settings(message: types.Message, db):
+    """Показати меню налаштувань"""
+    user_id = message.from_user.id
+    progress = await db.get_user_progress(user_id)
+    
+    if not progress:
+        await message.answer(
+            "❌ Спочатку пройдіть тестування!",
+            reply_markup=kb_with_level
+        )
+        return
+    
+    settings_text = (
+        f"⚙️ <b>НАЛАШТУВАННЯ</b>\n\n"
+        f"🎓 Поточний рівень: <b>{progress.level_english}</b>\n"
+        f"📊 Точність: {progress.accuracy:.1f}%\n"
+        f"📚 Слів вивчено: {progress.words_studied_today}\n"
+        f"❓ Питань пройдено: {progress.questions_answered_today}\n\n"
+        f"Оберіть дію:"
+    )
+    
+    await message.answer(
+        settings_text,
+        reply_markup=kb_settings,
+        parse_mode="HTML"
+    )
+
+@router.message(lambda message: message.text == "🔄 Пройти тестування заново")
+async def restart_testing_from_settings(message: types.Message, state: FSMContext, db):
+    """Перенаправити на тестування"""
+    await message.answer(
+        "🔄 Ви будете перенаправлені на тестування.\n"
+        "Ваш рівень буде оновлено після проходження тесту.",
+        reply_markup=kb_with_level
+    )
+    
+    # Імпортуємо handler тестування
+    from handlers.testing import start_testing
+    await start_testing(message, state, db)
+
+@router.message(lambda message: message.text == "📊 Змінити рівень вручну")
+async def change_level_from_settings(message: types.Message, state: FSMContext):
+    """Перенаправити на зміну рівня"""
+    await state.set_state(LevelSelection.selecting_level)
+    await message.answer(
+        "Оберіть новий рівень англійської мови:",
+        reply_markup=kb_select_level
+    )
+
+@router.message(lambda message: message.text == "🗑️ Скинути весь прогрес")
+async def request_reset_progress(message: types.Message, db):
+    """Запитати підтвердження скидання прогресу"""
+    user_id = message.from_user.id
+    progress = await db.get_user_progress(user_id)
+    word_stats = await db.get_user_word_stats(user_id)
+    
+    warning_text = (
+        f"⚠️ <b>УВАГА!</b>\n\n"
+        f"Ви впевнені, що хочете скинути весь прогрес?\n\n"
+        f"<b>Буде видалено:</b>\n"
+        f"• Рівень: {progress.level_english if progress else 'не встановлено'}\n"
+        f"• Слів вивчено: {word_stats['total']}\n"
+        f"• Засвоєних слів: {word_stats['mastered']}\n"
+        f"• Питань пройдено: {progress.total_questions_answered if progress else 0}\n"
+        f"• Точність: {progress.accuracy:.1f}% if progress else 0\n\n"
+        f"❗️ Цю дію <b>неможливо</b> скасувати!"
+    )
+    
+    await message.answer(
+        warning_text,
+        reply_markup=get_reset_confirmation_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "reset_confirm")
+async def confirm_reset_progress(callback: types.CallbackQuery, db):
+    """Підтвердження скидання прогресу"""
+    user_id = callback.from_user.id
+    
+    try:
+        await db.reset_user_progress(user_id)
+        
+        await callback.message.edit_text(
+            "✅ <b>Прогрес успішно скинуто!</b>\n\n"
+            "Тепер ви можете пройти тестування заново.",
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        await callback.message.edit_text(
+            f"❌ Помилка при скиданні прогресу: {e}\n\n"
+            "Спробуйте ще раз або зверніться до адміністратора.",
+            parse_mode="HTML"
+        )
+        
+        await callback.message.answer(
+            "Повертаємось до налаштувань.",
+            reply_markup=kb_settings
+        )
+
+@router.callback_query(F.data == "reset_cancel")
+async def cancel_reset_progress(callback: types.CallbackQuery):
+    """Скасування скидання прогресу"""
+    await callback.message.edit_text(
+        "✅ Скидання прогресу скасовано.\n"
+        "Ваші дані збережено."
+    )
+    
+    await callback.message.answer(
+        "Повертаємось до налаштувань.",
+        reply_markup=kb_settings
+    )
+
+@router.message(lambda message: message.text == "◀️ Повернутись назад")
+async def back_from_settings(message: types.Message, db):
+    """Повернутись з налаштувань"""
+    user_id = message.from_user.id
+    keyboard = await get_appropriate_keyboard(db, user_id)
+    
+    await message.answer(
+        "↩️ Повернулись до головного меню.",
+        reply_markup=keyboard
+    )

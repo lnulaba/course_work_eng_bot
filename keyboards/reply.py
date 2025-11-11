@@ -30,11 +30,8 @@ kb_with_level = types.ReplyKeyboardMarkup(
             types.KeyboardButton(text="❓ Практика питань"),
         ],
         [
-            types.KeyboardButton(text="Пройти заново тестування"),
-        ],
-        [
-            types.KeyboardButton(text="Змінити рівень самому"),
             types.KeyboardButton(text="Статистика"),
+            types.KeyboardButton(text="⚙️ Налаштування"),
         ],
         [
             types.KeyboardButton(text="Інформація про курс"),
@@ -85,6 +82,25 @@ kb_practicing_questions = types.ReplyKeyboardMarkup(
     keyboard=[
         [
             types.KeyboardButton(text="🛑 Завершити практику питань"),
+        ]
+    ],
+    resize_keyboard=True,
+)
+
+# Клавіатура налаштувань
+kb_settings = types.ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            types.KeyboardButton(text="🔄 Пройти тестування заново"),
+        ],
+        [
+            types.KeyboardButton(text="📊 Змінити рівень вручну"),
+        ],
+        [
+            types.KeyboardButton(text="🗑️ Скинути весь прогрес"),
+        ],
+        [
+            types.KeyboardButton(text="◀️ Повернутись назад"),
         ]
     ],
     resize_keyboard=True,

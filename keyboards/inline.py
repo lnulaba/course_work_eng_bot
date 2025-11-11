@@ -76,3 +76,13 @@ def get_level_up_keyboard(next_level: str) -> types.InlineKeyboardMarkup:
         ]
     ])
     return keyboard
+
+def get_reset_confirmation_keyboard() -> types.InlineKeyboardMarkup:
+    """Створити клавіатуру для підтвердження скидання прогресу"""
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text="✅ Так, скинути все", callback_data="reset_confirm"),
+            types.InlineKeyboardButton(text="❌ Ні, відміна", callback_data="reset_cancel")
+        ]
+    ])
+    return keyboard
