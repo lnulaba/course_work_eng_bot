@@ -196,6 +196,36 @@ class DB:
             result = await session.execute(query)
             return result.scalars().all()
         
+
+    async def get_questions_for_testing(self):
+        """Отримати по 1 питанню з кожної теми для кожного рівня (відсортовано)"""
+        async with self.session_maker() as session:
+            levels = ["A1", "A2", "B1", "B2", "C1", "C2"]
+            all_questions = []
+            
+            # Отримати всі теми
+            topics_result = await session.execute(select(Topics.topic))
+            topics = [row[0] for row in topics_result.all()]
+            
+            # Для кожного рівня
+            for level in levels:
+                # Для кожної теми
+                for topic in topics:
+                    result = await session.execute(
+                        select(Questions)
+                        .where(Questions.check_admin == False) # поки що тільки не перевірені питання
+                        .where(Questions.level_english == level)
+                        .where(Questions.topic == topic)
+                        .order_by(func.rand())
+                        .limit(1)
+                    )
+                    question = result.scalar_one_or_none()
+                    if question:
+                        all_questions.append(question)
+            
+            return all_questions
+        
+        
     async def get_questions_statistics(self):
         """Отримати статистику питань по рівнях та темах"""
         async with self.session_maker() as session:
