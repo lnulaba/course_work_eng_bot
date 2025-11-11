@@ -25,9 +25,13 @@ async def start_daily_words(message: types.Message, state: FSMContext, db):
     progress = await db.get_user_progress(user_id)
     
     if not progress:
+        # Отримати відповідну клавіатуру
+        from handlers.basic import get_appropriate_keyboard
+        keyboard = await get_appropriate_keyboard(db, user_id)
+        
         await message.answer(
             "❌ Спочатку пройдіть тестування для визначення вашого рівня!",
-            reply_markup=kb_with_level
+            reply_markup=keyboard
         )
         return
     
@@ -149,9 +153,13 @@ async def stop_learning_words(message: types.Message, state: FSMContext, db):
     current_state = await state.get_state()
     
     if current_state != DailyWords.learning:
+        # Отримати відповідну клавіатуру
+        from handlers.basic import get_appropriate_keyboard
+        keyboard = await get_appropriate_keyboard(db, message.from_user.id)
+        
         await message.answer(
             "Ви не в режимі навчання слів.",
-            reply_markup=kb_with_level
+            reply_markup=keyboard
         )
         return
     
@@ -173,16 +181,23 @@ async def stop_learning_words(message: types.Message, state: FSMContext, db):
         f"Повертайтесь пізніше для продовження навчання! 📚"
     )
     
-    await message.answer(stats_text, parse_mode="HTML", reply_markup=kb_with_level)
+    # Отримати відповідну клавіатуру
+    from handlers.basic import get_appropriate_keyboard
+    keyboard = await get_appropriate_keyboard(db, message.from_user.id)
+    
+    await message.answer(stats_text, parse_mode="HTML", reply_markup=keyboard)
     await state.clear()
 
 async def finish_daily_words(message: types.Message, state: FSMContext, db):
     """Завершити щоденне навчання слів"""
-    # Виправлення: message.from_user.id замість message.from_user.user_id
     user_id = message.from_user.id if hasattr(message, 'from_user') else message.chat.id
     
     data = await state.get_data()
     stats = data.get('stats', {'easy': 0, 'know': 0, 'hard': 0, 'new': 0})
+    
+    # Отримати відповідну клавіатуру
+    from handlers.basic import get_appropriate_keyboard
+    keyboard = await get_appropriate_keyboard(db, user_id)
     
     # Показати статистику
     stats_text = (
@@ -195,7 +210,7 @@ async def finish_daily_words(message: types.Message, state: FSMContext, db):
         f"Повертайтесь завтра для нових слів! 📚"
     )
     
-    await message.answer(stats_text, parse_mode="HTML", reply_markup=kb_with_level)
+    await message.answer(stats_text, parse_mode="HTML", reply_markup=keyboard)
     
     # Перевірити можливість переходу на наступний рівень
     can_level_up = await db.check_level_up_eligibility(user_id)

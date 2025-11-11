@@ -25,6 +25,10 @@ class User(Base):
     # Адміністратор
     is_admin = Column(Boolean, default=False)
     
+    # Налаштування нагадувань
+    reminder_enabled = Column(Boolean, default=True)
+    reminder_time = Column(String(5), default="09:00")  # Формат HH:MM
+    
     # Relationship - використовуємо user_id для зв'язку
     progress = relationship("UserProgress", back_populates="user", foreign_keys="UserProgress.user_id", uselist=False)
 

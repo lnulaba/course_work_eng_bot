@@ -8,7 +8,8 @@ from keyboards.reply import (
     kb_no_level, 
     kb_with_level, 
     kb_select_level,
-    kb_settings
+    kb_settings,
+    get_main_keyboard
 )
 from keyboards.inline import get_reset_confirmation_keyboard
 
@@ -17,6 +18,10 @@ router = Router()
 # FSM для вибору рівня
 class LevelSelection(StatesGroup):
     selecting_level = State()
+
+# FSM для налаштування нагадувань
+class ReminderSettings(StatesGroup):
+    waiting_for_time = State()
 
 async def get_appropriate_keyboard(db, user_id):
     """Отримати відповідну клавіатуру залежно від стану користувача"""
@@ -30,7 +35,9 @@ async def get_appropriate_keyboard(db, user_id):
     if not progress:
         return kb_no_level
     
-    return kb_with_level
+    # Перевірити чи є користувач адміном
+    is_admin = await db.is_user_admin(user_id)
+    return get_main_keyboard(is_admin=is_admin)
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, db):
@@ -204,39 +211,20 @@ async def show_statistics(message: types.Message, db):
         else:
             # Показати що потрібно
             min_words_needed = max(0, 100 - user_word_stats['total'])
-            min_mastered_needed = max(0, 50 - user_word_stats['mastered'])
+            # min_mastered_needed = max(0, 50 - user_word_stats['mastered'])
             
             message_text += f"\n📈 <b>Прогрес до наступного рівня:</b>\n"
             if min_words_needed > 0:
                 message_text += f"  • Вивчіть ще {min_words_needed} слів\n"
-            if min_mastered_needed > 0:
-                message_text += f"  • Засвойте ще {min_mastered_needed} слів (lvl 3+)\n"
-            if user_word_stats['accuracy'] < 60:
-                message_text += f"  • Покращте точність слів до 60%\n"
-            if progress.accuracy < 60:
-                message_text += f"  • Покращте точність питань до 60%\n"
+            # if min_mastered_needed > 0:
+            #     message_text += f"  • Засвойте ще {min_mastered_needed} слів (lvl 3+)\n"
+            # if user_word_stats['accuracy'] < 60:
+            #     message_text += f"  • Покращте точність слів до 60%\n"
+            # if progress.accuracy < 60:
+            #     message_text += f"  • Покращте точність питань до 60%\n"
     else:
         message_text += f"\n🎓 <b>Ваш прогрес:</b>\n"
         message_text += f"  Пройдіть тестування для визначення рівня!\n"
-    
-    # Статистика слів в базі
-    message_text += f"\n📚 <b>Словниковий запас в базі ({words_stats['total']} слів):</b>\n"
-    for level in ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]:
-        count = words_stats['by_level'].get(level, 0)
-        message_text += f"  {level}: {count} слів\n"
-    
-    # Статистика питань в базі
-    message_text += f"\n❓ <b>База питань ({questions_stats['total']} питань):</b>\n"
-    
-    message_text += f"\n<b>По рівнях:</b>\n"
-    for level in ["A1", "A2", "B1", "B2", "C1", "C2"]:
-        count = questions_stats['by_level'].get(level, 0)
-        message_text += f"  {level}: {count} питань\n"
-    
-    message_text += f"\n<b>По темах (топ-5):</b>\n"
-    sorted_topics = sorted(questions_stats['by_topic'].items(), key=lambda x: x[1], reverse=True)[:5]
-    for topic, count in sorted_topics:
-        message_text += f"  {topic}: {count} питань\n"
     
     await message.answer(message_text, parse_mode="HTML")
 
@@ -362,5 +350,137 @@ async def back_from_settings(message: types.Message, db):
     
     await message.answer(
         "↩️ Повернулись до головного меню.",
+        reply_markup=keyboard
+    )
+
+@router.message(lambda message: message.text == "🔔 Налаштування нагадувань")
+async def show_reminder_settings(message: types.Message, db):
+    """Показати налаштування нагадувань"""
+    user_id = message.from_user.id
+    
+    # Отримати поточні налаштування
+    settings = await db.get_user_reminder_settings(user_id)
+    
+    status_text = "✅ Увімкнено" if settings['enabled'] else "❌ Вимкнено"
+    
+    settings_text = (
+        f"🔔 <b>НАЛАШТУВАННЯ НАГАДУВАНЬ</b>\n\n"
+        f"📊 Поточні налаштування:\n"
+        f"  • Статус: {status_text}\n"
+        f"  • Час нагадування: {settings['time']}\n\n"
+        f"<b>Команди:</b>\n"
+        f"  /reminder_on - Увімкнути нагадування\n"
+        f"  /reminder_off - Вимкнути нагадування\n"
+        f"  /reminder_time - Змінити час нагадування\n\n"
+        f"💡 Нагадування допоможе вам не забувати про щоденне навчання!"
+    )
+    
+    await message.answer(settings_text, parse_mode="HTML")
+
+@router.message(Command("reminder_on"))
+async def enable_reminder(message: types.Message, db):
+    """Увімкнути нагадування"""
+    user_id = message.from_user.id
+    
+    success = await db.update_user_reminder_settings(user_id, enabled=True)
+    
+    if success:
+        settings = await db.get_user_reminder_settings(user_id)
+        await message.answer(
+            f"✅ Нагадування увімкнено!\n\n"
+            f"⏰ Час нагадування: {settings['time']}\n\n"
+            f"Ви отримуватимете щоденне нагадування про навчання.",
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer("❌ Помилка при увімкненні нагадувань")
+
+@router.message(Command("reminder_off"))
+async def disable_reminder(message: types.Message, db):
+    """Вимкнути нагадування"""
+    user_id = message.from_user.id
+    
+    success = await db.update_user_reminder_settings(user_id, enabled=False)
+    
+    if success:
+        await message.answer(
+            "❌ Нагадування вимкнено.\n\n"
+            "Ви можете увімкнути їх знову командою /reminder_on"
+        )
+    else:
+        await message.answer("❌ Помилка при вимкненні нагадувань")
+
+@router.message(Command("reminder_time"))
+async def request_reminder_time(message: types.Message, state: FSMContext):
+    """Запит на зміну часу нагадування"""
+    await state.set_state(ReminderSettings.waiting_for_time)
+    
+    await message.answer(
+        "⏰ <b>Зміна часу нагадування</b>\n\n"
+        "Введіть новий час у форматі <b>HH:MM</b> (24-годинний формат)\n\n"
+        "Наприклад:\n"
+        "  • 09:00 - о 9 ранку\n"
+        "  • 18:30 - о 6:30 вечора\n"
+        "  • 21:00 - о 9 вечора\n\n"
+        "Або натисніть /cancel для скасування",
+        parse_mode="HTML"
+    )
+
+@router.message(ReminderSettings.waiting_for_time)
+async def process_reminder_time(message: types.Message, state: FSMContext, db):
+    """Обробка зміни часу нагадування"""
+    user_id = message.from_user.id
+    time_input = message.text.strip()
+    
+    # Валідація формату HH:MM
+    try:
+        hour, minute = time_input.split(':')
+        hour = int(hour)
+        minute = int(minute)
+        
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+        
+        # Форматувати час
+        formatted_time = f"{hour:02d}:{minute:02d}"
+        
+        # Зберегти новий час
+        success = await db.update_user_reminder_settings(user_id, time=formatted_time)
+        
+        if success:
+            await message.answer(
+                f"✅ Час нагадування оновлено!\n\n"
+                f"⏰ Новий час: <b>{formatted_time}</b>\n\n"
+                f"Ви отримуватимете щоденне нагадування о цій годині.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer("❌ Помилка при збереженні часу")
+        
+        await state.clear()
+    
+    except ValueError:
+        await message.answer(
+            "❌ Невірний формат часу!\n\n"
+            "Використовуйте формат <b>HH:MM</b> (24-годинний)\n"
+            "Наприклад: 09:00 або 18:30\n\n"
+            "Спробуйте ще раз або натисніть /cancel для скасування",
+            parse_mode="HTML"
+        )
+
+@router.message(Command("cancel"))
+async def cancel_handler(message: types.Message, state: FSMContext, db):
+    """Скасувати поточну дію"""
+    current_state = await state.get_state()
+    
+    if current_state is None:
+        await message.answer("Немає активних дій для скасування.")
+        return
+    
+    await state.clear()
+    
+    keyboard = await get_appropriate_keyboard(db, message.from_user.id)
+    await message.answer(
+        "✅ Дію скасовано.",
         reply_markup=keyboard
     )

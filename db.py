@@ -741,5 +741,148 @@ class DB:
             
             await session.commit()
             return True
+    
+    async def get_users_statistics(self):
+        """Отримати загальну статистику користувачів"""
+        async with self.session_maker() as session:
+            # Загальна кількість користувачів
+            total_users_result = await session.execute(select(func.count(User.id)))
+            total_users = total_users_result.scalar()
+            
+            # Користувачі з прогресом
+            users_with_progress_result = await session.execute(
+                select(func.count(UserProgress.id))
+            )
+            users_with_progress = users_with_progress_result.scalar()
+            
+            # Користувачі по рівнях
+            users_by_level_result = await session.execute(
+                select(UserProgress.level_english, func.count(UserProgress.id))
+                .group_by(UserProgress.level_english)
+                .order_by(UserProgress.level_english)
+            )
+            users_by_level = {level: count for level, count in users_by_level_result.all()}
+            
+            # Премиум користувачі
+            premium_users_result = await session.execute(
+                select(func.count(User.id)).where(User.tg_premium == True)
+            )
+            premium_users = premium_users_result.scalar()
+            
+            # Адміністратори
+            admin_users_result = await session.execute(
+                select(func.count(User.id)).where(User.is_admin == True)
+            )
+            admin_users = admin_users_result.scalar()
+            
+            return {
+                "total": total_users,
+                "with_progress": users_with_progress,
+                "by_level": users_by_level,
+                "premium": premium_users,
+                "admins": admin_users
+            }
+    
+    async def find_user_by_telegram_id(self, tg_id: int):
+        """Знайти користувача по Telegram ID"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.tg_id == tg_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def get_user_full_info(self, user_id: int):
+        """Отримати повну інформацію про користувача"""
+        async with self.session_maker() as session:
+            # Користувач
+            user_result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            
+            if not user:
+                return None
+            
+            # Прогрес
+            progress_result = await session.execute(
+                select(UserProgress).where(UserProgress.user_id == user_id)
+            )
+            progress = progress_result.scalar_one_or_none()
+            
+            # Статистика слів
+            word_stats = await self.get_user_word_stats(user_id)
+            
+            return {
+                "user": user,
+                "progress": progress,
+                "word_stats": word_stats
+            }
+    
+    async def get_all_users_list(self, limit: int = 50, offset: int = 0):
+        """Отримати список всіх користувачів з пагінацією"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User)
+                .order_by(User.registration_date.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            return result.scalars().all()
+        
+    async def get_user_reminder_settings(self, user_id: int):
+        """Отримати налаштування нагадувань користувача"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User.reminder_enabled, User.reminder_time, User.tg_id)
+                .where(User.user_id == user_id)
+            )
+            settings = result.one_or_none()
+            
+            if settings:
+                return {
+                    'enabled': settings[0] if settings[0] is not None else True,
+                    'time': settings[1] or "09:00",
+                    'tg_id': settings[2]
+                }
+            return {
+                'enabled': True,
+                'time': "09:00",
+                'tg_id': None
+            }
+    
+    async def update_user_reminder_settings(self, user_id: int, enabled: bool = None, time: str = None):
+        """Оновити налаштування нагадувань користувача"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                if enabled is not None:
+                    user.reminder_enabled = enabled
+                if time is not None:
+                    user.reminder_time = time
+                
+                await session.commit()
+                return True
+            return False
+    
+    async def get_users_for_reminder(self, current_time: str):
+        """
+        Отримати користувачів для відправки нагадування
+        current_time - формат HH:MM
+        """
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User)
+                .where(
+                    and_(
+                        User.reminder_enabled == True,
+                        User.reminder_time == current_time
+                    )
+                )
+            )
+            return result.scalars().all()
 
 

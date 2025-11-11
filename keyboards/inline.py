@@ -86,3 +86,26 @@ def get_reset_confirmation_keyboard() -> types.InlineKeyboardMarkup:
         ]
     ])
     return keyboard
+
+def get_user_info_keyboard(user_id: int, is_target_admin: bool = False) -> types.InlineKeyboardMarkup:
+    """Створити клавіатуру для дій з користувачем (залежить від статусу)"""
+    buttons = []
+    
+    if is_target_admin:
+        # Якщо користувач вже адмін - показати тільки кнопку зняття
+        buttons.append([
+            types.InlineKeyboardButton(text="👤 Зняти адміна", callback_data=f"admin_remove_{user_id}")
+        ])
+    else:
+        # Якщо не адмін - показати кнопку призначення
+        buttons.append([
+            types.InlineKeyboardButton(text="👑 Зробити адміном", callback_data=f"admin_make_{user_id}")
+        ])
+    
+    # Кнопка скидання прогресу завжди доступна
+    buttons.append([
+        types.InlineKeyboardButton(text="🗑️ Скинути прогрес", callback_data=f"admin_reset_{user_id}")
+    ])
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+    return keyboard

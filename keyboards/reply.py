@@ -20,18 +20,41 @@ kb_unregistered = types.ReplyKeyboardMarkup(
 # Така сама клавіатура для користувачів без рівня
 kb_no_level = kb_unregistered
 
-# Клавіатура для користувачів з визначеним рівнем
-kb_with_level = types.ReplyKeyboardMarkup(
+# Клавіатура для користувачів з визначеним рівнем (БЕЗ кнопки адмін-панелі)
+kb_with_level_no_admin = types.ReplyKeyboardMarkup(
     keyboard=[
         [
             types.KeyboardButton(text="📚 Вивчати слова"),
-        ],
-        [
             types.KeyboardButton(text="❓ Практика питань"),
         ],
         [
             types.KeyboardButton(text="Статистика"),
             types.KeyboardButton(text="⚙️ Налаштування"),
+        ],
+        [
+            types.KeyboardButton(text="Інформація про курс"),
+            types.KeyboardButton(text="Допомога"),
+        ],
+        [
+            types.KeyboardButton(text="Підтримати розробника"),
+        ]
+    ],
+    resize_keyboard=True,
+)
+
+# Клавіатура для користувачів з визначеним рівнем (З кнопкою адмін-панелі)
+kb_with_level = types.ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            types.KeyboardButton(text="📚 Вивчати слова"),
+            types.KeyboardButton(text="❓ Практика питань"),
+        ],
+        [
+            types.KeyboardButton(text="Статистика"),
+            types.KeyboardButton(text="⚙️ Налаштування"),
+        ],
+        [
+            types.KeyboardButton(text="👑 Адмін панель"),  # Додана кнопка
         ],
         [
             types.KeyboardButton(text="Інформація про курс"),
@@ -92,11 +115,10 @@ kb_settings = types.ReplyKeyboardMarkup(
     keyboard=[
         [
             types.KeyboardButton(text="🔄 Пройти тестування заново"),
-        ],
-        [
             types.KeyboardButton(text="📊 Змінити рівень вручну"),
         ],
         [
+            types.KeyboardButton(text="🔔 Налаштування нагадувань"),
             types.KeyboardButton(text="🗑️ Скинути весь прогрес"),
         ],
         [
@@ -105,3 +127,32 @@ kb_settings = types.ReplyKeyboardMarkup(
     ],
     resize_keyboard=True,
 )
+
+# Клавіатура адмін-панелі
+kb_admin_panel = types.ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            types.KeyboardButton(text="📊 Статистика слів"),
+            types.KeyboardButton(text="❓ Статистика питань"),
+        ],
+        [
+            types.KeyboardButton(text="👥 Статистика користувачів"),
+        ],
+        [
+            types.KeyboardButton(text="🔍 Знайти користувача"),
+            # types.KeyboardButton(text="👤 Призначити адміна"),
+        ],
+        [
+            types.KeyboardButton(text="◀️ Назад до головного меню"),
+        ]
+    ],
+    resize_keyboard=True,
+)
+
+# Функція для отримання клавіатури залежно від статусу адміна
+def get_main_keyboard(is_admin: bool = False) -> types.ReplyKeyboardMarkup:
+    """Отримати головну клавіатуру з урахуванням статусу адміна"""
+    if is_admin:
+        return kb_with_level
+    else:
+        return kb_with_level_no_admin
