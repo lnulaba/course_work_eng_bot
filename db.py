@@ -71,6 +71,7 @@ class DB:
         Fetch a word by its ID.
         """
         'dockstring'
+        
         async with self.session_maker() as session:
             result = await session.execute(select(Words).where(Words.word_id == word_id))
             return result.scalar_one_or_none()
