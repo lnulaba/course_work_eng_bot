@@ -69,3 +69,23 @@ kb_select_level = types.ReplyKeyboardMarkup(
     ],
     resize_keyboard=True,
 )
+
+# Клавіатура для режиму навчання слів
+kb_learning_words = types.ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            types.KeyboardButton(text="🛑 Завершити вивчення слів"),
+        ]
+    ],
+    resize_keyboard=True,
+)
+
+# Клавіатура для режиму практики питань
+kb_practicing_questions = types.ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            types.KeyboardButton(text="🛑 Завершити практику питань"),
+        ]
+    ],
+    resize_keyboard=True,
+)

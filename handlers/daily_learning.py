@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import json
 
-from keyboards.reply import kb_with_level
+from keyboards.reply import kb_with_level, kb_learning_words, kb_practicing_questions
 from keyboards.inline import get_daily_word_keyboard, get_level_up_keyboard, get_daily_question_keyboard, get_next_question_keyboard
 
 router = Router()
@@ -64,7 +64,7 @@ async def start_daily_words(message: types.Message, state: FSMContext, db):
         daily_limit=daily_limit
     )
     
-    # Показати перше слово
+    # Показати перше слово з клавіатурою
     await show_word(message, state, db, 0, words)
 
 async def show_word(message: types.Message, state: FSMContext, db, index: int, words: list):
@@ -87,6 +87,13 @@ async def show_word(message: types.Message, state: FSMContext, db, index: int, w
         reply_markup=get_daily_word_keyboard(word.word_id),
         parse_mode="HTML"
     )
+    
+    # Показати клавіатуру з кнопкою завершення (тільки для першого слова)
+    if index == 0:
+        await message.answer(
+            "Ви можете завершити навчання в будь-який момент ⬇️",
+            reply_markup=kb_learning_words
+        )
 
 @router.callback_query(F.data.startswith("word_"))
 async def process_word_answer(callback: types.CallbackQuery, state: FSMContext, db):
@@ -135,9 +142,44 @@ async def process_word_answer(callback: types.CallbackQuery, state: FSMContext, 
     else:
         await finish_daily_words(callback.message, state, db)
 
+@router.message(lambda message: message.text == "🛑 Завершити вивчення слів")
+async def stop_learning_words(message: types.Message, state: FSMContext, db):
+    """Дострокове завершення навчання слів"""
+    # Перевірити чи користувач в режимі навчання
+    current_state = await state.get_state()
+    
+    if current_state != DailyWords.learning:
+        await message.answer(
+            "Ви не в режимі навчання слів.",
+            reply_markup=kb_with_level
+        )
+        return
+    
+    # Показати статистику і завершити
+    data = await state.get_data()
+    stats = data.get('stats', {'easy': 0, 'know': 0, 'hard': 0, 'new': 0})
+    current_index = data.get('current_index', 0)
+    
+    total_studied = stats['easy'] + stats['know'] + stats['hard'] + stats['new']
+    
+    stats_text = (
+        f"🛑 <b>Навчання завершено достроково</b>\n\n"
+        f"📊 <b>Статистика:</b>\n"
+        f"  Вивчено слів: {total_studied}\n"
+        f"  ⭐️ Легко: {stats['easy']}\n"
+        f"  ✅ Знаю: {stats['know']}\n"
+        f"  ❓ Складно: {stats['hard']}\n"
+        f"  ❌ Не знаю: {stats['new']}\n\n"
+        f"Повертайтесь пізніше для продовження навчання! 📚"
+    )
+    
+    await message.answer(stats_text, parse_mode="HTML", reply_markup=kb_with_level)
+    await state.clear()
+
 async def finish_daily_words(message: types.Message, state: FSMContext, db):
     """Завершити щоденне навчання слів"""
-    user_id = message.from_user.user_id if hasattr(message, 'from_user') else message.chat.id
+    # Виправлення: message.from_user.id замість message.from_user.user_id
+    user_id = message.from_user.id if hasattr(message, 'from_user') else message.chat.id
     
     data = await state.get_data()
     stats = data.get('stats', {'easy': 0, 'know': 0, 'hard': 0, 'new': 0})
@@ -153,7 +195,7 @@ async def finish_daily_words(message: types.Message, state: FSMContext, db):
         f"Повертайтесь завтра для нових слів! 📚"
     )
     
-    await message.answer(stats_text, parse_mode="HTML")
+    await message.answer(stats_text, parse_mode="HTML", reply_markup=kb_with_level)
     
     # Перевірити можливість переходу на наступний рівень
     can_level_up = await db.check_level_up_eligibility(user_id)
@@ -323,6 +365,13 @@ async def show_daily_question(message: types.Message, state: FSMContext, db, ind
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+    
+    # Показати клавіатуру з кнопкою завершення (тільки для першого питання)
+    if index == 0:
+        await message.answer(
+            "Ви можете завершити практику в будь-який момент ⬇️",
+            reply_markup=kb_practicing_questions
+        )
 
 @router.callback_query(F.data.startswith("daily_q_"))
 async def process_daily_question_answer(callback: types.CallbackQuery, state: FSMContext, db):
@@ -414,6 +463,39 @@ async def show_next_daily_question(callback: types.CallbackQuery, state: FSMCont
     else:
         await finish_daily_questions(callback.message, state, db)
 
+@router.message(lambda message: message.text == "🛑 Завершити практику питань")
+async def stop_practicing_questions(message: types.Message, state: FSMContext, db):
+    """Дострокове завершення практики питань"""
+    # Перевірити чи користувач в режимі практики
+    current_state = await state.get_state()
+    
+    if current_state != DailyQuestions.answering:
+        await message.answer(
+            "Ви не в режимі практики питань.",
+            reply_markup=kb_with_level
+        )
+        return
+    
+    # Показати статистику і завершити
+    data = await state.get_data()
+    stats = data.get('stats', {'correct': 0, 'wrong': 0})
+    
+    total_answered = stats['correct'] + stats['wrong']
+    accuracy = (stats['correct'] / total_answered * 100) if total_answered > 0 else 0
+    
+    stats_text = (
+        f"🛑 <b>Практика завершена достроково</b>\n\n"
+        f"📊 <b>Результати:</b>\n"
+        f"  Питань пройдено: {total_answered}\n"
+        f"  ✅ Правильних: {stats['correct']}\n"
+        f"  ❌ Неправильних: {stats['wrong']}\n"
+        f"  📈 Точність: {accuracy:.1f}%\n\n"
+        f"Повертайтесь пізніше для продовження практики! 📝"
+    )
+    
+    await message.answer(stats_text, parse_mode="HTML", reply_markup=kb_with_level)
+    await state.clear()
+
 async def finish_daily_questions(message: types.Message, state: FSMContext, db):
     """Завершити щоденну практику питань"""
     user_id = message.from_user.id if hasattr(message, 'from_user') else message.chat.id
@@ -436,7 +518,7 @@ async def finish_daily_questions(message: types.Message, state: FSMContext, db):
         f"Повертайтесь завтра для нових питань! 📝"
     )
     
-    await message.answer(stats_text, parse_mode="HTML")
+    await message.answer(stats_text, parse_mode="HTML", reply_markup=kb_with_level)
     
     # Перевірити можливість переходу на наступний рівень
     can_level_up = await db.check_level_up_eligibility(user_id)
