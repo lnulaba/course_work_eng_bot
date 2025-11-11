@@ -203,12 +203,12 @@ async def show_statistics(message: types.Message, db):
         message_text += f"  {topic}: {count} питань\n"
     
     # Детальна статистика по рівнях і темах
-    if questions_stats['by_level_topic']:
-        message_text += f"\n<b>📋 Детально по рівнях і темах:</b>\n"
-        for level in ["A1", "A2", "B1", "B2", "C1", "C2"]:
-            if level in questions_stats['by_level_topic']:
-                message_text += f"\n  <b>{level}:</b>\n"
-                for topic, count in questions_stats['by_level_topic'][level].items():
-                    message_text += f"    • {topic}: {count}\n"
+    # if questions_stats['by_level_topic']:
+    #     message_text += f"\n<b>📋 Детально по рівнях і темах:</b>\n"
+    #     for level in ["A1", "A2", "B1", "B2", "C1", "C2"]:
+    #         if level in questions_stats['by_level_topic']:
+    #             message_text += f"\n  <b>{level}:</b>\n"
+    #             for topic, count in questions_stats['by_level_topic'][level].items():
+    #                 message_text += f"    • {topic}: {count}\n"
     
     await message.answer(message_text, parse_mode="HTML")
