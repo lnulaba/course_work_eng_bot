@@ -175,22 +175,52 @@ async def show_statistics(message: types.Message, db):
         message_text += f"  Дата реєстрації: {user.registration_date.strftime('%d.%m.%Y')}\n"
     
     if progress:
-        message_text += f"\n🎓 <b>Ваш прогрес:</b>\n"
-        message_text += f"  Поточний рівень: <b>{progress.level_english}</b>\n"
-        message_text += f"  Питань пройдено: {progress.total_questions_answered}\n"
-        message_text += f"  Правильних відповідей: {progress.correct_answers}\n"
-        message_text += f"  Точність: {progress.accuracy:.1f}%\n"
+        message_text += f"\n🎓 <b>Поточний рівень: {progress.level_english}</b>\n"
+        
+        # Статистика слів користувача
+        user_word_stats = await db.get_user_word_stats(user_id)
+        
+        message_text += f"\n📚 <b>Слова:</b>\n"
+        message_text += f"  • Сьогодні вивчено: {progress.words_studied_today}/50\n"
+        message_text += f"  • Всього на рівні: {user_word_stats['total']}\n"
+        message_text += f"  • Засвоєно (lvl 3-4): {user_word_stats['mastered']}\n"
+        message_text += f"  • Точність: {user_word_stats['accuracy']:.1f}%\n"
+        
+        message_text += f"\n❓ <b>Питання:</b>\n"
+        message_text += f"  • Сьогодні пройдено: {progress.questions_answered_today}/30\n"
+        message_text += f"  • Всього: {progress.total_questions_answered}\n"
+        message_text += f"  • Правильно: {progress.correct_answers}\n"
+        message_text += f"  • Точність: {progress.accuracy:.1f}%\n"
+        
+        # Прогрес до наступного рівня
+        can_level_up = await db.check_level_up_eligibility(user_id)
+        if can_level_up:
+            message_text += f"\n📈 <b>✅ Ви готові до переходу на наступний рівень!</b>\n"
+        else:
+            # Показати що потрібно
+            min_words_needed = max(0, 100 - user_word_stats['total'])
+            min_mastered_needed = max(0, 50 - user_word_stats['mastered'])
+            
+            message_text += f"\n📈 <b>Прогрес до наступного рівня:</b>\n"
+            if min_words_needed > 0:
+                message_text += f"  • Вивчіть ще {min_words_needed} слів\n"
+            if min_mastered_needed > 0:
+                message_text += f"  • Засвойте ще {min_mastered_needed} слів (lvl 3+)\n"
+            if user_word_stats['accuracy'] < 60:
+                message_text += f"  • Покращте точність слів до 60%\n"
+            if progress.accuracy < 60:
+                message_text += f"  • Покращте точність питань до 60%\n"
     else:
         message_text += f"\n🎓 <b>Ваш прогрес:</b>\n"
         message_text += f"  Пройдіть тестування для визначення рівня!\n"
     
-    # Статистика слів
-    message_text += f"\n📚 <b>Словниковий запас ({words_stats['total']} слів):</b>\n"
+    # Статистика слів в базі
+    message_text += f"\n📚 <b>Словниковий запас в базі ({words_stats['total']} слів):</b>\n"
     for level in ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]:
         count = words_stats['by_level'].get(level, 0)
         message_text += f"  {level}: {count} слів\n"
     
-    # Статистика питань
+    # Статистика питань в базі
     message_text += f"\n❓ <b>База питань ({questions_stats['total']} питань):</b>\n"
     
     message_text += f"\n<b>По рівнях:</b>\n"
@@ -198,17 +228,9 @@ async def show_statistics(message: types.Message, db):
         count = questions_stats['by_level'].get(level, 0)
         message_text += f"  {level}: {count} питань\n"
     
-    message_text += f"\n<b>По темах:</b>\n"
-    for topic, count in questions_stats['by_topic'].items():
+    message_text += f"\n<b>По темах (топ-5):</b>\n"
+    sorted_topics = sorted(questions_stats['by_topic'].items(), key=lambda x: x[1], reverse=True)[:5]
+    for topic, count in sorted_topics:
         message_text += f"  {topic}: {count} питань\n"
-    
-    # Детальна статистика по рівнях і темах
-    # if questions_stats['by_level_topic']:
-    #     message_text += f"\n<b>📋 Детально по рівнях і темах:</b>\n"
-    #     for level in ["A1", "A2", "B1", "B2", "C1", "C2"]:
-    #         if level in questions_stats['by_level_topic']:
-    #             message_text += f"\n  <b>{level}:</b>\n"
-    #             for topic, count in questions_stats['by_level_topic'][level].items():
-    #                 message_text += f"    • {topic}: {count}\n"
     
     await message.answer(message_text, parse_mode="HTML")

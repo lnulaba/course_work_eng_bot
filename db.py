@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import func, select
-from models import Base, User, Words, UserProgress, Questions, Topics
+from sqlalchemy import func, select, and_, or_
+from models import Base, User, Words, UserProgress, Questions, Topics, UserWordProgress
+from datetime import datetime, timedelta
 
 class Connection:    
     def __init__(self):
@@ -291,6 +292,322 @@ class DB:
             return {
                 "total": total_words,
                 "by_level": words_by_level
+            }
+        
+    async def get_daily_words(self, user_id: int, limit: int = 50):
+        """
+        Отримати 50 слів для щоденного навчання
+        
+        Логіка:
+        1. Взяти слова на повтор (next_review_date <= сьогодні) - до 25 слів
+        2. Доповнити новими словами поточного рівня до 50
+        3. Відфільтрувати слова, які вже показувались сьогодні
+        """
+        async with self.session_maker() as session:
+            # Отримати рівень користувача
+            progress = await self.get_user_progress(user_id)
+            if not progress:
+                return []
+            
+            user_level = progress.level_english
+            today = datetime.now().date()
+            
+            # 1. Слова на повтор (next_review_date <= today)
+            review_query = (
+                select(Words)
+                .join(UserWordProgress, Words.word_id == UserWordProgress.word_id)
+                .where(
+                    and_(
+                        UserWordProgress.user_id == user_id,
+                        UserWordProgress.next_review_date <= today,
+                        Words.level_english == user_level
+                    )
+                )
+                .order_by(UserWordProgress.next_review_date)
+                .limit(25)
+            )
+            review_result = await session.execute(review_query)
+            review_words = list(review_result.scalars().all())
+            
+            # 2. Нові слова (не в user_word_progress)
+            words_needed = limit - len(review_words)
+            if words_needed > 0:
+                # Отримати ID слів, які вже є в прогресі
+                existing_word_ids_query = select(UserWordProgress.word_id).where(
+                    UserWordProgress.user_id == user_id
+                )
+                existing_result = await session.execute(existing_word_ids_query)
+                existing_word_ids = [row[0] for row in existing_result.all()]
+                
+                # Вибрати нові слова
+                new_words_query = (
+                    select(Words)
+                    .where(
+                        and_(
+                            Words.level_english == user_level,
+                            Words.word_id.not_in(existing_word_ids) if existing_word_ids else True
+                        )
+                    )
+                    .order_by(func.rand())
+                    .limit(words_needed)
+                )
+                new_result = await session.execute(new_words_query)
+                new_words = list(new_result.scalars().all())
+                
+                review_words.extend(new_words)
+            
+            return review_words[:limit]
+    
+    async def save_word_answer(self, user_id: int, word_id: int, answer_type: str):
+        """
+        Зберегти відповідь користувача на слово
+        
+        answer_type: 'easy', 'know', 'hard', 'new'
+        """
+        REVIEW_INTERVALS = {
+            0: 0,      # Сьогодні
+            1: 1,      # +1 день
+            2: 3,      # +3 дні
+            3: 7,      # +7 днів
+            4: 30,     # +30 днів
+        }
+        
+        async with self.session_maker() as session:
+            # Знайти або створити запис прогресу
+            result = await session.execute(
+                select(UserWordProgress).where(
+                    and_(
+                        UserWordProgress.user_id == user_id,
+                        UserWordProgress.word_id == word_id
+                    )
+                )
+            )
+            word_progress = result.scalar_one_or_none()
+            
+            now = datetime.now()
+            
+            if not word_progress:
+                # Створити новий запис
+                word_progress = UserWordProgress(
+                    user_id=user_id,
+                    word_id=word_id,
+                    mastery_level=0,
+                    times_reviewed=0,
+                    first_seen_date=now
+                )
+                session.add(word_progress)
+            
+            # Оновити mastery_level
+            if answer_type == 'easy':
+                word_progress.mastery_level = min(4, word_progress.mastery_level + 2)
+            elif answer_type == 'know':
+                word_progress.mastery_level = min(4, word_progress.mastery_level + 1)
+            elif answer_type == 'hard':
+                word_progress.mastery_level = 1
+            elif answer_type == 'new':
+                word_progress.mastery_level = 0
+            
+            word_progress.times_reviewed += 1
+            word_progress.last_review_date = now
+            
+            # Розрахувати next_review_date
+            days_to_add = REVIEW_INTERVALS.get(word_progress.mastery_level, 0)
+            word_progress.next_review_date = now + timedelta(days=days_to_add)
+            
+            await session.commit()
+            
+            # Оновити загальний прогрес користувача
+            await self._update_user_daily_progress(user_id, words_increment=1)
+    
+    async def _update_user_daily_progress(self, user_id: int, words_increment: int = 0, questions_increment: int = 0):
+        """Оновити щоденний прогрес користувача"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(UserProgress).where(UserProgress.user_id == user_id)
+            )
+            progress = result.scalar_one_or_none()
+            
+            if not progress:
+                return
+            
+            today = datetime.now().date()
+            last_study = progress.last_study_date.date() if progress.last_study_date else None
+            
+            # Скинути лічильники якщо новий день
+            if last_study != today:
+                progress.words_studied_today = 0
+                progress.questions_answered_today = 0
+            
+            progress.words_studied_today += words_increment
+            progress.questions_answered_today += questions_increment
+            progress.last_study_date = datetime.now()
+            
+            # Оновити загальну кількість слів
+            if words_increment > 0:
+                progress.words_total = progress.words_studied_today
+                
+                # Порахувати засвоєні слова (mastery >= 3)
+                mastered_query = select(func.count(UserWordProgress.id)).where(
+                    and_(
+                        UserWordProgress.user_id == user_id,
+                        UserWordProgress.mastery_level >= 3
+                    )
+                )
+                mastered_result = await session.execute(mastered_query)
+                progress.words_mastered = mastered_result.scalar()
+            
+            await session.commit()
+    
+    async def get_daily_questions(self, user_id: int, limit: int = 30):
+        """
+        Отримати 30 питань поточного рівня
+        
+        Логіка: рівномірно розподілити по темах
+        """
+        async with self.session_maker() as session:
+            # Отримати рівень користувача
+            progress = await self.get_user_progress(user_id)
+            if not progress:
+                return []
+            
+            user_level = progress.level_english
+            
+            # Отримати всі теми
+            topics_result = await session.execute(select(Topics.topic))
+            topics = [row[0] for row in topics_result.all()]
+            
+            if not topics:
+                # Якщо немає тем, просто випадково вибрати питання
+                query = (
+                    select(Questions)
+                    .where(
+                        and_(
+                            Questions.level_english == user_level,
+                            Questions.check_admin == False
+                        )
+                    )
+                    .order_by(func.rand())
+                    .limit(limit)
+                )
+                result = await session.execute(query)
+                return list(result.scalars().all())
+            
+            # Розрахувати скільки питань на тему
+            questions_per_topic = max(1, limit // len(topics))
+            all_questions = []
+            
+            for topic in topics:
+                query = (
+                    select(Questions)
+                    .where(
+                        and_(
+                            Questions.level_english == user_level,
+                            Questions.topic == topic,
+                            Questions.check_admin == False
+                        )
+                    )
+                    .order_by(func.rand())
+                    .limit(questions_per_topic)
+                )
+                result = await session.execute(query)
+                all_questions.extend(result.scalars().all())
+            
+            # Якщо не вистачає, доповнити
+            if len(all_questions) < limit:
+                remaining = limit - len(all_questions)
+                existing_ids = [q.id for q in all_questions]
+                
+                extra_query = (
+                    select(Questions)
+                    .where(
+                        and_(
+                            Questions.level_english == user_level,
+                            Questions.check_admin == False,
+                            Questions.id.not_in(existing_ids) if existing_ids else True
+                        )
+                    )
+                    .order_by(func.rand())
+                    .limit(remaining)
+                )
+                extra_result = await session.execute(extra_query)
+                all_questions.extend(extra_result.scalars().all())
+            
+            return all_questions[:limit]
+    
+    async def check_level_up_eligibility(self, user_id: int):
+        """
+        Перевірити чи може користувач перейти на наступний рівень
+        
+        Критерії:
+        1. Мінімум 100 слів вивчено на поточному рівні
+        2. Мінімум 50 слів з mastery_level >= 3
+        3. Точність по словах >= 60%
+        4. Точність по питаннях >= 60%
+        """
+        async with self.session_maker() as session:
+            progress = await self.get_user_progress(user_id)
+            if not progress:
+                return False
+            
+            # Перевірка точності питань
+            if progress.accuracy < 60.0:
+                return False
+            
+            # Порахувати всі слова користувача
+            total_words_query = select(func.count(UserWordProgress.id)).where(
+                UserWordProgress.user_id == user_id
+            )
+            total_words_result = await session.execute(total_words_query)
+            total_words = total_words_result.scalar()
+            
+            if total_words < 100:
+                return False
+            
+            # Порахувати засвоєні слова
+            mastered_words_query = select(func.count(UserWordProgress.id)).where(
+                and_(
+                    UserWordProgress.user_id == user_id,
+                    UserWordProgress.mastery_level >= 3
+                )
+            )
+            mastered_result = await session.execute(mastered_words_query)
+            mastered_words = mastered_result.scalar()
+            
+            if mastered_words < 50:
+                return False
+            
+            # Порахувати точність по словах (% слів з mastery >= 3)
+            word_accuracy = (mastered_words / total_words * 100) if total_words > 0 else 0
+            
+            return word_accuracy >= 60.0
+    
+    async def get_user_word_stats(self, user_id: int):
+        """Отримати статистику слів користувача"""
+        async with self.session_maker() as session:
+            # Загальна кількість слів
+            total_query = select(func.count(UserWordProgress.id)).where(
+                UserWordProgress.user_id == user_id
+            )
+            total_result = await session.execute(total_query)
+            total_words = total_result.scalar()
+            
+            # Засвоєні слова (mastery >= 3)
+            mastered_query = select(func.count(UserWordProgress.id)).where(
+                and_(
+                    UserWordProgress.user_id == user_id,
+                    UserWordProgress.mastery_level >= 3
+                )
+            )
+            mastered_result = await session.execute(mastered_query)
+            mastered_words = mastered_result.scalar()
+            
+            # Точність
+            accuracy = (mastered_words / total_words * 100) if total_words > 0 else 0
+            
+            return {
+                'total': total_words,
+                'mastered': mastered_words,
+                'accuracy': accuracy
             }
 
 

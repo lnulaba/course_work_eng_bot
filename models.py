@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, Integer, String, TIMESTAMP, Float, ForeignKey, func
+from sqlalchemy import BigInteger, Boolean, Column, Integer, String, TIMESTAMP, Float, ForeignKey, func, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -32,8 +32,39 @@ class UserProgress(Base):
     accuracy = Column(Float, default=0.0)
     last_updated = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
     
+    # Нові поля для щоденного навчання
+    words_studied_today = Column(Integer, default=0)
+    questions_answered_today = Column(Integer, default=0)
+    last_study_date = Column(TIMESTAMP)
+    
+    words_total = Column(Integer, default=0)
+    words_mastered = Column(Integer, default=0)  # mastery_level >= 3
+    
     # Relationship - використовуємо user_id для зв'язку
     user = relationship("User", back_populates="progress", foreign_keys=[user_id])
+
+class UserWordProgress(Base):
+    """Прогрес користувача по словах (spaced repetition)"""
+    __tablename__ = 'user_word_progress'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey('users.user_id'), nullable=False)
+    word_id = Column(Integer, ForeignKey('words.word_id'), nullable=False)
+    
+    mastery_level = Column(Integer, default=0)  # 0-4
+    times_reviewed = Column(Integer, default=0)
+    
+    first_seen_date = Column(TIMESTAMP, server_default=func.current_timestamp())
+    last_review_date = Column(TIMESTAMP)
+    next_review_date = Column(TIMESTAMP)
+    
+    __table_args__ = (
+        UniqueConstraint('user_id', 'word_id', name='unique_user_word'),
+    )
+    
+    # Relationships
+    user_rel = relationship("User", foreign_keys=[user_id])
+    word_rel = relationship("Words", foreign_keys=[word_id])
 
 class Words(Base):
     __tablename__ = 'words'

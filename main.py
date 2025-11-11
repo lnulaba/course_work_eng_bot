@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import TelegramObject
 
 from db import Connection, DB
-from handlers import basic, testing
+from handlers import basic, testing, daily_learning
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token="7365678598:AAHAMFBVPRR5etj4Fdt3TTLnmWJSDNbrWFQ")
@@ -29,6 +29,7 @@ async def db_middleware(handler, event: TelegramObject, data: dict):
 # Підключити роутери
 dp.include_router(basic.router)
 dp.include_router(testing.router)
+dp.include_router(daily_learning.router)  # Новий роутер
 
 # Додати middleware
 dp.update.middleware(db_middleware)
