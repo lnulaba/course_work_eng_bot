@@ -42,6 +42,31 @@ def get_question_answer_keyboard(question_id: int, correct_answer: str, wrong_an
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     return keyboard
 
+def get_daily_question_keyboard(question_id: int, correct_answer: str, wrong_answers: list) -> types.InlineKeyboardMarkup:
+    """Створити інлайн клавіатуру для щоденних питань"""
+    # Об'єднати правильну та неправильні відповіді
+    all_answers = wrong_answers + [correct_answer]
+    random.shuffle(all_answers)
+    
+    # Створити кнопки
+    buttons = []
+    for answer in all_answers:
+        is_correct = answer == correct_answer
+        callback_data = f"daily_q_{question_id}_{'correct' if is_correct else 'wrong'}_{all_answers.index(answer)}"
+        buttons.append([types.InlineKeyboardButton(text=answer, callback_data=callback_data)])
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+    return keyboard
+
+def get_next_question_keyboard() -> types.InlineKeyboardMarkup:
+    """Створити клавіатуру з кнопкою 'Наступне питання'"""
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text="➡️ Наступне питання", callback_data="next_daily_question")
+        ]
+    ])
+    return keyboard
+
 def get_level_up_keyboard(next_level: str) -> types.InlineKeyboardMarkup:
     """Створити клавіатуру для пропозиції переходу на наступний рівень"""
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[

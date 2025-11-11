@@ -1,9 +1,10 @@
 from aiogram import types, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+import json
 
 from keyboards.reply import kb_with_level
-from keyboards.inline import get_daily_word_keyboard, get_level_up_keyboard
+from keyboards.inline import get_daily_word_keyboard, get_level_up_keyboard, get_daily_question_keyboard, get_next_question_keyboard
 
 router = Router()
 
@@ -15,9 +16,9 @@ class DailyWords(StatesGroup):
 class DailyQuestions(StatesGroup):
     answering = State()
 
-@router.message(lambda message: message.text == "📚 Вивчати слова (50/день)")
+@router.message(lambda message: message.text in ["📚 Вивчати слова (50/день)", "📚 Вивчати слова"])
 async def start_daily_words(message: types.Message, state: FSMContext, db):
-    """Почати щоденне вивчення 50 слів"""
+    """Почати щоденне вивчення слів"""
     user_id = message.from_user.id
     
     # Перевірити прогрес користувача
@@ -30,17 +31,21 @@ async def start_daily_words(message: types.Message, state: FSMContext, db):
         )
         return
     
+    # Отримати ліміти користувача
+    limits = await db.get_user_limits(user_id)
+    daily_limit = limits['words']
+    
     # Перевірити чи не перевищено ліміт
-    if progress.words_studied_today >= 50:
+    if progress.words_studied_today >= daily_limit:
         await message.answer(
-            f"✅ Ви вже вивчили 50 слів сьогодні!\n\n"
+            f"✅ Ви вже вивчили {daily_limit} слів сьогодні!\n\n"
             f"Повертайтесь завтра для нових слів 📚",
             reply_markup=kb_with_level
         )
         return
     
-    # Отримати слова
-    words = await db.get_daily_words(user_id, limit=50)
+    # Отримати слова (використовуємо ліміт з налаштувань)
+    words = await db.get_daily_words(user_id)
     
     if not words:
         await message.answer(
@@ -55,7 +60,8 @@ async def start_daily_words(message: types.Message, state: FSMContext, db):
     await state.update_data(
         words=words,
         current_index=0,
-        stats={'easy': 0, 'know': 0, 'hard': 0, 'new': 0}
+        stats={'easy': 0, 'know': 0, 'hard': 0, 'new': 0},
+        daily_limit=daily_limit
     )
     
     # Показати перше слово
@@ -70,8 +76,12 @@ async def show_word(message: types.Message, state: FSMContext, db, index: int, w
     
     word = words[index]
     
+    # Отримати ліміт з FSM
+    data = await state.get_data()
+    daily_limit = data.get('daily_limit', 50)
+    
     await message.answer(
-        f"📝 Слово {index + 1}/50\n\n"
+        f"📝 Слово {index + 1}/{daily_limit}\n\n"
         f"🇬🇧 <b>{word.word}</b>\n\n"
         f"Наскільки добре ви знаєте це слово?",
         reply_markup=get_daily_word_keyboard(word.word_id),
@@ -98,12 +108,13 @@ async def process_word_answer(callback: types.CallbackQuery, state: FSMContext, 
     
     current_index = data.get('current_index', 0)
     words = data.get('words', [])
+    daily_limit = data.get('daily_limit', 50)
     
     # Показати переклад
     word = next((w for w in words if w.word_id == word_id), None)
     if word:
         await callback.message.edit_text(
-            f"📝 Слово {current_index + 1}/50\n\n"
+            f"📝 Слово {current_index + 1}/{daily_limit}\n\n"
             f"🇬🇧 <b>{word.word}</b>\n"
             f"🇺🇦 {word.translation}\n\n"
             f"{'⭐️ Чудово!' if answer_type == 'easy' else '✅ Добре!' if answer_type == 'know' else '📖 Продовжуйте вчити!' if answer_type == 'hard' else '🆕 Нове слово!'}"
@@ -228,7 +239,7 @@ async def process_level_up(callback: types.CallbackQuery, db):
         reply_markup=kb_with_level
     )
 
-@router.message(lambda message: message.text == "❓ Практика питань (30/день)")
+@router.message(lambda message: message.text in ["❓ Практика питань (30/день)", "❓ Практика питань"])
 async def start_daily_questions(message: types.Message, state: FSMContext, db):
     """Почати щоденну практику питань"""
     user_id = message.from_user.id
@@ -243,17 +254,21 @@ async def start_daily_questions(message: types.Message, state: FSMContext, db):
         )
         return
     
+    # Отримати ліміти користувача
+    limits = await db.get_user_limits(user_id)
+    daily_limit = limits['questions']
+    
     # Перевірити ліміт
-    if progress.questions_answered_today >= 30:
+    if progress.questions_answered_today >= daily_limit:
         await message.answer(
-            f"✅ Ви вже відповіли на 30 питань сьогодні!\n\n"
+            f"✅ Ви вже відповіли на {daily_limit} питань сьогодні!\n\n"
             f"Повертайтесь завтра для нових питань ❓",
             reply_markup=kb_with_level
         )
         return
     
-    # Отримати питання
-    questions = await db.get_daily_questions(user_id, limit=30)
+    # Отримати питання (використовуємо ліміт з налаштувань)
+    questions = await db.get_daily_questions(user_id)
     
     if not questions:
         await message.answer(
@@ -263,11 +278,176 @@ async def start_daily_questions(message: types.Message, state: FSMContext, db):
         )
         return
     
+    # Зберегти в FSM
+    await state.set_state(DailyQuestions.answering)
+    await state.update_data(
+        questions=questions,
+        current_index=0,
+        stats={'correct': 0, 'wrong': 0},
+        daily_limit=daily_limit
+    )
+    
+    # Показати перше питання
+    await show_daily_question(message, state, db, 0, questions)
+
+async def show_daily_question(message: types.Message, state: FSMContext, db, index: int, questions: list):
+    """Показати питання користувачу"""
+    if index >= len(questions):
+        # Всі питання пройдено
+        await finish_daily_questions(message, state, db)
+        return
+    
+    question = questions[index]
+    
+    # Отримати ліміт з FSM
+    data = await state.get_data()
+    daily_limit = data.get('daily_limit', 30)
+    
+    # Парсити неправильні відповіді
+    try:
+        wrong_answers = json.loads(question.wrong_answers)
+    except:
+        wrong_answers = []
+    
+    keyboard = get_daily_question_keyboard(
+        question.id,
+        question.answer,
+        wrong_answers
+    )
+    
     await message.answer(
-        f"🎯 <b>Щоденна практика</b>\n\n"
-        f"Рівень: {progress.level_english}\n"
-        f"Питань: 30\n\n"
-        f"Функція в розробці... 🚧",
-        reply_markup=kb_with_level,
+        f"❓ Питання {index + 1}/{daily_limit}\n\n"
+        f"<b>{question.question}</b>\n\n"
+        f"📚 Тема: {question.topic}\n"
+        f"📊 Рівень: {question.level_english}",
+        reply_markup=keyboard,
         parse_mode="HTML"
     )
+
+@router.callback_query(F.data.startswith("daily_q_"))
+async def process_daily_question_answer(callback: types.CallbackQuery, state: FSMContext, db):
+    """Обробити відповідь на щоденне питання"""
+    user_id = callback.from_user.id
+    
+    # Розпарсити callback_data: daily_q_{question_id}_{correct/wrong}_{answer_index}
+    parts = callback.data.split('_')
+    question_id = int(parts[2])
+    is_correct = parts[3] == 'correct'
+    
+    # Отримати дані з FSM
+    data = await state.get_data()
+    questions = data.get('questions', [])
+    current_index = data.get('current_index', 0)
+    stats = data.get('stats', {'correct': 0, 'wrong': 0})
+    daily_limit = data.get('daily_limit', 30)
+    
+    # Знайти поточне питання
+    current_question = questions[current_index]
+    
+    # Зберегти відповідь в базу
+    await db.save_question_answer(user_id, question_id, is_correct)
+    
+    # Оновити статистику
+    if is_correct:
+        stats['correct'] += 1
+    else:
+        stats['wrong'] += 1
+    
+    # Оновити індекс
+    next_index = current_index + 1
+    await state.update_data(current_index=next_index, stats=stats)
+    
+    if is_correct:
+        # Правильна відповідь - одразу наступне питання
+        await callback.message.edit_text(
+            f"✅ <b>Правильно!</b>\n\n"
+            f"Питання {current_index + 1}/{daily_limit}\n\n"
+            f"<b>{current_question.question}</b>\n\n"
+            f"✔️ Відповідь: <b>{current_question.answer}</b>",
+            parse_mode="HTML"
+        )
+        
+        # Невелика затримка
+        import asyncio
+        await asyncio.sleep(1.5)
+        
+        if next_index < len(questions):
+            await show_daily_question(callback.message, state, db, next_index, questions)
+        else:
+            await finish_daily_questions(callback.message, state, db)
+    else:
+        # Неправильна відповідь - показати пояснення та кнопку
+        explanation_text = (
+            f"❌ <b>Неправильно</b>\n\n"
+            f"Питання {current_index + 1}/{daily_limit}\n\n"
+            f"<b>{current_question.question}</b>\n\n"
+            f"✔️ Правильна відповідь: <b>{current_question.answer}</b>\n"
+        )
+        
+        # Додати пояснення якщо є
+        if current_question.explanation:
+            explanation_text += f"\n💡 <b>Пояснення:</b>\n{current_question.explanation}"
+        
+        await callback.message.edit_text(
+            explanation_text,
+            reply_markup=get_next_question_keyboard(),
+            parse_mode="HTML"
+        )
+
+@router.callback_query(F.data == "next_daily_question")
+async def show_next_daily_question(callback: types.CallbackQuery, state: FSMContext, db):
+    """Показати наступне питання після неправильної відповіді"""
+    await callback.answer()
+    
+    data = await state.get_data()
+    questions = data.get('questions', [])
+    current_index = data.get('current_index', 0)
+    
+    # Видалити попереднє повідомлення
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    
+    if current_index < len(questions):
+        await show_daily_question(callback.message, state, db, current_index, questions)
+    else:
+        await finish_daily_questions(callback.message, state, db)
+
+async def finish_daily_questions(message: types.Message, state: FSMContext, db):
+    """Завершити щоденну практику питань"""
+    user_id = message.from_user.id if hasattr(message, 'from_user') else message.chat.id
+    
+    data = await state.get_data()
+    stats = data.get('stats', {'correct': 0, 'wrong': 0})
+    daily_limit = data.get('daily_limit', 30)
+    
+    total = stats['correct'] + stats['wrong']
+    accuracy = (stats['correct'] / total * 100) if total > 0 else 0
+    
+    # Показати статистику
+    stats_text = (
+        f"🎉 <b>Вітаю! Ви завершили щоденну практику!</b>\n\n"
+        f"📊 <b>Результати:</b>\n"
+        f"  ✅ Правильних: {stats['correct']}\n"
+        f"  ❌ Неправильних: {stats['wrong']}\n"
+        f"  📈 Точність: {accuracy:.1f}%\n\n"
+        f"{'🔥 Чудовий результат!' if accuracy >= 80 else '💪 Продовжуйте тренуватись!' if accuracy >= 60 else '📚 Приділіть більше уваги вивченню!'}\n\n"
+        f"Повертайтесь завтра для нових питань! 📝"
+    )
+    
+    await message.answer(stats_text, parse_mode="HTML")
+    
+    # Перевірити можливість переходу на наступний рівень
+    can_level_up = await db.check_level_up_eligibility(user_id)
+    
+    if can_level_up:
+        progress = await db.get_user_progress(user_id)
+        await suggest_level_up(message, db, progress.level_english)
+    else:
+        await message.answer(
+            "Продовжуйте вчити! 💪",
+            reply_markup=kb_with_level
+        )
+    
+    await state.clear()

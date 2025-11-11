@@ -18,6 +18,13 @@ class User(Base):
     tg_premium = Column(Boolean)
     tg_lang = Column(String(10))
     
+    # Налаштування денних лімітів
+    daily_words_limit = Column(Integer, default=50)
+    daily_questions_limit = Column(Integer, default=30)
+    
+    # Адміністратор
+    is_admin = Column(Boolean, default=False)
+    
     # Relationship - використовуємо user_id для зв'язку
     progress = relationship("UserProgress", back_populates="user", foreign_keys="UserProgress.user_id", uselist=False)
 

@@ -294,20 +294,58 @@ class DB:
                 "by_level": words_by_level
             }
         
-    async def get_daily_words(self, user_id: int, limit: int = 50):
+    async def get_user_limits(self, user_id: int):
+        """Отримати денні ліміти користувача"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User.daily_words_limit, User.daily_questions_limit).where(User.user_id == user_id)
+            )
+            limits = result.one_or_none()
+            
+            if limits:
+                return {
+                    'words': limits[0] or 50,
+                    'questions': limits[1] or 30
+                }
+            return {
+                'words': 50,
+                'questions': 30
+            }
+    
+    async def update_user_limits(self, user_id: int, words_limit: int = None, questions_limit: int = None):
+        """Оновити денні ліміти користувача"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                if words_limit is not None:
+                    user.daily_words_limit = words_limit
+                if questions_limit is not None:
+                    user.daily_questions_limit = questions_limit
+                
+                await session.commit()
+                return True
+            return False
+    
+    async def get_daily_words(self, user_id: int, limit: int = None):
         """
-        Отримати 50 слів для щоденного навчання
+        Отримати слова для щоденного навчання
         
-        Логіка:
-        1. Взяти слова на повтор (next_review_date <= сьогодні) - до 25 слів
-        2. Доповнити новими словами поточного рівня до 50
-        3. Відфільтрувати слова, які вже показувались сьогодні
+        Якщо limit не вказано, використовується ліміт з налаштувань користувача
         """
         async with self.session_maker() as session:
-            # Отримати рівень користувача
+            # Отримати рівень користувача та ліміт
             progress = await self.get_user_progress(user_id)
             if not progress:
                 return []
+            
+            # Якщо ліміт не вказано, отримати з налаштувань користувача
+            if limit is None:
+                limits = await self.get_user_limits(user_id)
+                limit = limits['words']
             
             user_level = progress.level_english
             today = datetime.now().date()
@@ -324,7 +362,7 @@ class DB:
                     )
                 )
                 .order_by(UserWordProgress.next_review_date)
-                .limit(25)
+                .limit(limit // 2)  # До половини ліміту на повтор
             )
             review_result = await session.execute(review_query)
             review_words = list(review_result.scalars().all())
@@ -458,17 +496,22 @@ class DB:
             
             await session.commit()
     
-    async def get_daily_questions(self, user_id: int, limit: int = 30):
+    async def get_daily_questions(self, user_id: int, limit: int = None):
         """
-        Отримати 30 питань поточного рівня
+        Отримати питання поточного рівня
         
-        Логіка: рівномірно розподілити по темах
+        Якщо limit не вказано, використовується ліміт з налаштувань користувача
         """
         async with self.session_maker() as session:
-            # Отримати рівень користувача
+            # Отримати рівень користувача та ліміт
             progress = await self.get_user_progress(user_id)
             if not progress:
                 return []
+            
+            # Якщо ліміт не вказано, отримати з налаштувань користувача
+            if limit is None:
+                limits = await self.get_user_limits(user_id)
+                limit = limits['questions']
             
             user_level = progress.level_english
             
@@ -609,5 +652,62 @@ class DB:
                 'mastered': mastered_words,
                 'accuracy': accuracy
             }
+    
+    async def is_user_admin(self, user_id: int):
+        """Перевірити чи є користувач адміністратором"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User.is_admin).where(User.user_id == user_id)
+            )
+            is_admin = result.scalar_one_or_none()
+            return is_admin if is_admin is not None else False
+    
+    async def set_user_admin(self, user_id: int, is_admin: bool = True):
+        """Встановити/зняти статус адміністратора"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                user.is_admin = is_admin
+                await session.commit()
+                return True
+            return False
+    
+    async def save_question_answer(self, user_id: int, question_id: int, is_correct: bool):
+        """
+        Зберегти відповідь користувача на питання
+        
+        Оновлює лічильник questions_answered_today та загальну статистику
+        """
+        await self._update_user_daily_progress(user_id, questions_increment=1)
+        
+        # Якщо правильна відповідь, оновити статистику точності
+        if is_correct:
+            async with self.session_maker() as session:
+                result = await session.execute(
+                    select(UserProgress).where(UserProgress.user_id == user_id)
+                )
+                progress = result.scalar_one_or_none()
+                
+                if progress:
+                    progress.total_questions_answered += 1
+                    progress.correct_answers += 1
+                    progress.accuracy = (progress.correct_answers / progress.total_questions_answered * 100)
+                    await session.commit()
+        else:
+            # Неправильна відповідь - тільки збільшити лічильник
+            async with self.session_maker() as session:
+                result = await session.execute(
+                    select(UserProgress).where(UserProgress.user_id == user_id)
+                )
+                progress = result.scalar_one_or_none()
+                
+                if progress:
+                    progress.total_questions_answered += 1
+                    progress.accuracy = (progress.correct_answers / progress.total_questions_answered * 100)
+                    await session.commit()
 
 

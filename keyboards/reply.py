@@ -24,10 +24,10 @@ kb_no_level = kb_unregistered
 kb_with_level = types.ReplyKeyboardMarkup(
     keyboard=[
         [
-            types.KeyboardButton(text="📚 Вивчати слова (50/день)"),
+            types.KeyboardButton(text="📚 Вивчати слова"),
         ],
         [
-            types.KeyboardButton(text="❓ Практика питань (30/день)"),
+            types.KeyboardButton(text="❓ Практика питань"),
         ],
         [
             types.KeyboardButton(text="Пройти заново тестування"),

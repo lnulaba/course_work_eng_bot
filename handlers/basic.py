@@ -161,6 +161,9 @@ async def show_statistics(message: types.Message, db):
     user = await db.get_user(user_id)
     progress = await db.get_user_progress(user_id)
     
+    # Отримати ліміти користувача
+    limits = await db.get_user_limits(user_id)
+    
     # Отримати статистику питань та слів
     questions_stats = await db.get_questions_statistics()
     words_stats = await db.get_words_statistics()
@@ -181,13 +184,13 @@ async def show_statistics(message: types.Message, db):
         user_word_stats = await db.get_user_word_stats(user_id)
         
         message_text += f"\n📚 <b>Слова:</b>\n"
-        message_text += f"  • Сьогодні вивчено: {progress.words_studied_today}/50\n"
+        message_text += f"  • Сьогодні вивчено: {progress.words_studied_today}/{limits['words']}\n"
         message_text += f"  • Всього на рівні: {user_word_stats['total']}\n"
         message_text += f"  • Засвоєно (lvl 3-4): {user_word_stats['mastered']}\n"
         message_text += f"  • Точність: {user_word_stats['accuracy']:.1f}%\n"
         
         message_text += f"\n❓ <b>Питання:</b>\n"
-        message_text += f"  • Сьогодні пройдено: {progress.questions_answered_today}/30\n"
+        message_text += f"  • Сьогодні пройдено: {progress.questions_answered_today}/{limits['questions']}\n"
         message_text += f"  • Всього: {progress.total_questions_answered}\n"
         message_text += f"  • Правильно: {progress.correct_answers}\n"
         message_text += f"  • Точність: {progress.accuracy:.1f}%\n"
