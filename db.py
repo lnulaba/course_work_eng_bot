@@ -884,5 +884,38 @@ class DB:
                 )
             )
             return result.scalars().all()
+    
+    async def get_all_words(self):
+        """Отримати всі слова з бази даних"""
+        async with self.session_maker() as session:
+            result = await session.execute(select(Words))
+            return result.scalars().all()
+    
+    async def get_words_without_audio(self):
+        """Отримати слова без аудіо файлів"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(Words).where(
+                    or_(
+                        Words.file_audio.is_(None),
+                        Words.file_audio == ''
+                    )
+                )
+            )
+            return result.scalars().all()
+    
+    async def update_word_audio_path(self, word_id: int, audio_path: str):
+        """Оновити шлях до аудіо файлу для слова"""
+        async with self.session_maker() as session:
+            result = await session.execute(
+                select(Words).where(Words.word_id == word_id)
+            )
+            word = result.scalar_one_or_none()
+            
+            if word:
+                word.file_audio = audio_path
+                await session.commit()
+                return True
+            return False
 
 

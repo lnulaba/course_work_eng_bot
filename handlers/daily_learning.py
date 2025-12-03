@@ -2,6 +2,8 @@ from aiogram import types, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import json
+import os
+from aiogram.types import FSInputFile
 
 from keyboards.reply import kb_with_level, kb_learning_words, kb_practicing_questions
 from keyboards.inline import get_daily_word_keyboard, get_level_up_keyboard, get_daily_question_keyboard, get_next_question_keyboard
@@ -74,7 +76,6 @@ async def start_daily_words(message: types.Message, state: FSMContext, db):
 async def show_word(message: types.Message, state: FSMContext, db, index: int, words: list):
     """Показати слово користувачу"""
     if index >= len(words):
-        # Всі слова пройдено
         await finish_daily_words(message, state, db)
         return
     
@@ -84,20 +85,38 @@ async def show_word(message: types.Message, state: FSMContext, db, index: int, w
     data = await state.get_data()
     daily_limit = data.get('daily_limit', 50)
     
-    await message.answer(
+    text = (
         f"📝 Слово {index + 1}/{daily_limit}\n\n"
         f"🇬🇧 <b>{word.word}</b>\n\n"
-        f"Наскільки добре ви знаєте це слово?",
-        reply_markup=get_daily_word_keyboard(word.word_id),
-        parse_mode="HTML"
+        f"Наскільки добре ви знаєте це слово?"
     )
     
-    # Показати клавіатуру з кнопкою завершення (тільки для першого слова)
-    if index == 0:
-        await message.answer(
-            "Ви можете завершити навчання в будь-який момент ⬇️",
-            reply_markup=kb_learning_words
+    # Перевірити чи є аудіо
+    audio_path = f"files/audios/{word.word}.mp3"
+    
+    if os.path.exists(audio_path):
+        # Відправити з аудіо
+        audio = FSInputFile(audio_path)
+        await message.answer_voice(
+            voice=audio,
+            caption=text,
+            reply_markup=get_daily_word_keyboard(word.word_id),
+            parse_mode="HTML"
         )
+    else:
+        # Відправити тільки текст
+        await message.answer(
+            text,
+            reply_markup=get_daily_word_keyboard(word.word_id),
+            parse_mode="HTML"
+        )
+    
+    # Показати клавіатуру з кнопкою завершення (тільки для першого слова)
+    # if index == 0:
+    #     await message.answer(
+    #         "Ви можете завершити навчання в будь-який момент ⬇️",
+    #         reply_markup=kb_learning_words
+    #     )
 
 @router.callback_query(F.data.startswith("word_"))
 async def process_word_answer(callback: types.CallbackQuery, state: FSMContext, db):
@@ -124,22 +143,40 @@ async def process_word_answer(callback: types.CallbackQuery, state: FSMContext, 
     # Показати переклад
     word = next((w for w in words if w.word_id == word_id), None)
     if word:
-        await callback.message.edit_text(
+        translation_text = (
             f"📝 Слово {current_index + 1}/{daily_limit}\n\n"
             f"🇬🇧 <b>{word.word}</b>\n"
             f"🇺🇦 {word.translation}\n\n"
             f"{'⭐️ Чудово!' if answer_type == 'easy' else '✅ Добре!' if answer_type == 'know' else '📖 Продовжуйте вчити!' if answer_type == 'hard' else '🆕 Нове слово!'}"
-            ,
-            parse_mode="HTML"
         )
+        
+        # Перевірити чи це голосове повідомлення
+        if callback.message.voice:
+            # Редагувати caption для голосового
+            await callback.message.edit_caption(
+                caption=translation_text,
+                parse_mode="HTML"
+            )
+        else:
+            # Редагувати текст для звичайного повідомлення
+            await callback.message.edit_text(
+                translation_text,
+                parse_mode="HTML"
+            )
     
     # Перейти до наступного слова
     next_index = current_index + 1
     await state.update_data(current_index=next_index, stats=stats)
     
-    # Невелика затримка перед наступним словом
+    # Невелика затримка перед видаленням
     import asyncio
-    await asyncio.sleep(1)
+    await asyncio.sleep(2.5)
+    
+    # Видалити попереднє повідомлення
+    try:
+        await callback.message.delete()
+    except:
+        pass
     
     if next_index < len(words):
         await show_word(callback.message, state, db, next_index, words)

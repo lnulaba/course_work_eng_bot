@@ -7,16 +7,19 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(BigInteger, unique=True, nullable=False)
-    username = Column(String(255))
-    first_name = Column(String(255))
-    last_name = Column(String(255))
-    registration_date = Column(TIMESTAMP, server_default=func.current_timestamp())
-    user_progress_id = Column(Integer)
-    tg_id = Column(BigInteger)
-    tg_premium = Column(Boolean)
-    tg_lang = Column(String(10))
+    id = Column(Integer, primary_key=True, autoincrement=True)  # Ціле автоінкрементне PK. Генерується БД.
+    user_id = Column(BigInteger, unique=True, nullable=False)   # Зовнішній/публічний ідентифікатор (наприклад, Telegram). Унікальний, обов’язковий.
+    username = Column(String(255))                               # Нік користувача, до 255 символів. За замовчуванням nullable=True.
+    first_name = Column(String(255))                             # Ім’я, до 255 символів.
+    last_name = Column(String(255))                              # Прізвище, до 255 символів.
+    registration_date = Column(                                  # Дата реєстрації. Задається на стороні БД при вставці.
+        TIMESTAMP, 
+        server_default=func.current_timestamp()                  # DDL DEFAULT CURRENT_TIMESTAMP (працює навіть якщо поле не вказувати в INSERT).
+    )
+    user_progress_id = Column(Integer)                           # Посилання на прогрес (краще зробити ForeignKey, якщо є відповідна таблиця).
+    tg_id = Column(BigInteger)                                   # Telegram internal ID (може дублювати user_id або бути окремим).
+    tg_premium = Column(Boolean)                                 # Ознака Premium. Якщо потрібно строго True/False — зробіть nullable=False і дефолт.
+    tg_lang = Column(String(10))                                 # Мова інтерфейсу (наприклад, 'en', 'uk', 'ru'), до 10 символів.
     
     # Налаштування денних лімітів
     daily_words_limit = Column(Integer, default=50)

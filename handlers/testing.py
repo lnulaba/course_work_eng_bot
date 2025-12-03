@@ -26,7 +26,7 @@ async def start_testing(message: types.Message, state: FSMContext, db):
     )
     
     # Отримати випадкові слова
-    random_words = await db.get_random_words(total_count=7)
+    random_words = await db.get_random_words(total_count=14) # Кратно 7 (7 слів на кожен рівень A0, A1, A2, B1, B2, C1, C2)
     
     # Зберегти слова, результати та user_id в FSM
     await state.update_data(
